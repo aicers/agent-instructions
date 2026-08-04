@@ -7,9 +7,21 @@ name: Shared instruction-block drift
 #       uses: aicers/agent-instructions/.github/workflows/check-drift.yml@main
 #       with:
 #         blocks: "workflow rust rust-tls"
+#         instructions-ref: v1
 #
 # It fails when the marked blocks in the caller's AGENTS.md differ from
-# the current blocks in aicers/agent-instructions.
+# the blocks in aicers/agent-instructions at instructions-ref.
+#
+# instructions-ref is required, and is a release tag rather than a
+# branch. Comparing against a moving branch would turn every upstream
+# edit into a red build in ten repositories at once, including pull
+# requests that have nothing to do with the instructions — which trains
+# everyone to ignore this check. Pinned, an upstream edit reaches a
+# repository only through its sync pull request, which moves the pin.
+#
+# The pin is also the record of which release a repository carries. It
+# is not duplicated in a comment anywhere: this input decides what the
+# comparison runs against, so unlike a comment it cannot be wrong.
 
 on:
   workflow_call:
@@ -24,9 +36,11 @@ on:
         default: AGENTS.md
         type: string
       instructions-ref:
-        description: Ref of aicers/agent-instructions to compare against
-        required: false
-        default: main
+        description: >
+          Release tag of aicers/agent-instructions to compare against.
+          Required: floating on a branch is what this pin exists to
+          prevent.
+        required: true
         type: string
 
 jobs:

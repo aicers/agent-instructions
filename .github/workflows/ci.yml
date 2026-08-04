@@ -19,6 +19,9 @@ jobs:
       - name: Test render.py
         run: python3 scripts/test_render.py
 
+      - name: Test pin.py
+        run: python3 scripts/test_pin.py
+
       - name: Verify block markers and authoring rules
         run: python3 scripts/lint_blocks.py
 
