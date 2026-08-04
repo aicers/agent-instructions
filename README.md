@@ -49,7 +49,7 @@ Each consuming repository has:
 
 - `AGENTS.md` — the real file, containing the shared blocks plus its own
   sections. Every agent that reads `AGENTS.md` gets it directly.
-- `CLAUDE.md` — one line: `@AGENTS.md`. Claude Code reads `CLAUDE.md`
+- `CLAUDE.md` — the import, `@AGENTS.md`. Claude Code reads `CLAUDE.md`
   and not `AGENTS.md`, and expands this import at session start, so the
   two tools read one text rather than two copies. Anything
   Claude-specific, should a repository ever need it, goes below the
@@ -171,7 +171,18 @@ repository public is the simpler option, since it holds no secrets.
 1. Add it to `repos.json` with the blocks it should consume.
 2. Restructure its `AGENTS.md`: convert bullets to `-`, drop section
    numbering, and insert the marker pairs where each block belongs.
-3. Replace its `CLAUDE.md` with the single line `@AGENTS.md`.
+3. Write its `CLAUDE.md`:
+
+   ```markdown
+   <!-- markdownlint-disable-file MD041 -->
+   @AGENTS.md
+   ```
+
+   The lint directive is needed because a file whose first line is an
+   import has no top-level heading. It costs nothing — block-level HTML
+   comments are stripped before the text reaches context — and it does
+   not interfere with the import, which was measured rather than
+   assumed.
 4. Add the drift-check job to its CI, including an `instructions-ref`
    pin. `sync.sh` refuses a repository that consumes blocks without
    one, rather than leaving it floating.
