@@ -9,6 +9,7 @@
     "review-database": ["workflow", "rust", "rust-crypto", "changelog"],
     "review-web":      ["workflow", "rust", "rust-tls", "changelog"],
     "roxyd":           ["workflow", "rust"],
+    "review-protocol": ["workflow", "rust", "rust-tls", "changelog"],
     "agentcoop":       ["workflow", "node", "changelog"],
     "aice-web-next":   ["workflow", "node", "db-migrations"],
     "aimer-web":       ["workflow", "node", "db-migrations"]
