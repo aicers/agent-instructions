@@ -44,6 +44,11 @@ per block: bumping `rust` does not disturb repositories that only consume
 - Keep headings unique within a block, and distinct from the headings in
   other blocks. Consumers set MD024 `siblings_only`, but overlapping
   headings across blocks confuse readers regardless.
+- Wrap any `@` in backticks. A consumer's `CLAUDE.md` imports
+  `AGENTS.md`, and Claude Code parses imported files for further
+  `@path` imports, skipping only code spans and fenced blocks. A bare
+  `@ts-ignore` in a block would send it looking for a file named
+  `ts-ignore`.
 
 ## Versioning
 

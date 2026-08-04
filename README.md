@@ -48,12 +48,24 @@ STYLE.md        how to write a block
 Each consuming repository has:
 
 - `AGENTS.md` — the real file, containing the shared blocks plus its own
-  sections.
-- `CLAUDE.md` — a symbolic link to `AGENTS.md`. The two files were
-  byte-identical apart from a title line, so the link removes half the
-  surface that can drift. (Skip the link if the repository is checked out
-  on Windows or with `core.symlinks=false`, where it degrades into a
-  one-line text file.)
+  sections. Every agent that reads `AGENTS.md` gets it directly.
+- `CLAUDE.md` — one line: `@AGENTS.md`. Claude Code reads `CLAUDE.md`
+  and not `AGENTS.md`, and expands this import at session start, so the
+  two tools read one text rather than two copies. Anything
+  Claude-specific, should a repository ever need it, goes below the
+  import.
+
+A symlink also works, and was the original plan here. The import wins on
+two counts: it needs no privileges on Windows, where a symlink degrades
+into a one-line text file and an agent silently reads a filename instead
+of any rules, and it leaves room for that Claude-only section.
+
+Measured on Claude Code 2.1.220, with file tools disabled so the agent
+could not simply open the file: a canary in `AGENTS.md` is invisible
+with neither mechanism in place, and loads with either. The markers
+themselves do not load — Claude Code strips block-level HTML comments
+before injecting the text, which is why they are HTML comments. They
+cost no context and the agent never sees them.
 
 Inside `AGENTS.md`, the shared regions are delimited by markers and
 everything outside them belongs to the repository:
@@ -159,7 +171,7 @@ repository public is the simpler option, since it holds no secrets.
 1. Add it to `repos.json` with the blocks it should consume.
 2. Restructure its `AGENTS.md`: convert bullets to `-`, drop section
    numbering, and insert the marker pairs where each block belongs.
-3. Replace its `CLAUDE.md` with a symbolic link to `AGENTS.md`.
+3. Replace its `CLAUDE.md` with the single line `@AGENTS.md`.
 4. Add the drift-check job to its CI, including an `instructions-ref`
    pin. `sync.sh` refuses a repository that consumes blocks without
    one, rather than leaving it floating.

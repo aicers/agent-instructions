@@ -15,6 +15,7 @@ from pathlib import Path
 
 MAX_WIDTH = 76
 ROOT = Path(__file__).resolve().parent.parent
+CODE_SPAN = re.compile(r"`[^`]*`")
 
 
 def main() -> int:
@@ -52,6 +53,12 @@ def main() -> int:
             if not in_fence and re.match(r"\s*\*\s", line):
                 failures.append(
                     f"{where}:{number}: use '-' for bullets, not '*'"
+                )
+            if not in_fence and "@" in CODE_SPAN.sub("", line):
+                failures.append(
+                    f"{where}:{number}: bare '@' — Claude Code parses "
+                    f"'@path' in an imported file as another import. "
+                    f"Wrap it in backticks."
                 )
             for repo in repos:
                 if repo in line:
