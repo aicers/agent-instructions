@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lint Markdown
+        uses: DavidAnson/markdownlint-cli2-action@v20
+        with:
+          globs: "**/*.md"
+
+      - name: Test render.py
+        run: python3 scripts/test_render.py
+
+      - name: Verify block markers and authoring rules
+        run: python3 scripts/lint_blocks.py
+
+      - name: Verify repos.json references existing blocks
+        run: |
+          python3 - <<'PY'
+          import json, pathlib, sys
+          cfg = json.load(open("repos.json"))
+          have = {p.stem for p in pathlib.Path("blocks").glob("*.md")}
+          missing = {
+              b for blocks in cfg["repos"].values() for b in blocks
+          } - have
+          if missing:
+              sys.exit(f"repos.json references unknown blocks: {sorted(missing)}")
+          unused = have - {b for bs in cfg["repos"].values() for b in bs}
+          if unused:
+              print(f"note: blocks not consumed by any repository: {sorted(unused)}")
+          PY

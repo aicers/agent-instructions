@@ -1,0 +1,16 @@
+{
+  "org": "aicers",
+  "target": "AGENTS.md",
+  "repos": {
+    "aimer":           ["workflow", "rust", "rust-tls", "rust-crypto", "changelog"],
+    "bootler":         ["workflow", "rust"],
+    "bootroot":        ["workflow", "rust", "rust-tls", "rust-crypto", "changelog"],
+    "multifold":       ["workflow", "rust"],
+    "review-database": ["workflow", "rust", "rust-crypto", "changelog"],
+    "review-web":      ["workflow", "rust", "rust-tls", "changelog"],
+    "roxyd":           ["workflow", "rust"],
+    "agentcoop":       ["workflow", "node", "changelog"],
+    "aice-web-next":   ["workflow", "node", "db-migrations"],
+    "aimer-web":       ["workflow", "node", "db-migrations"]
+  }
+}

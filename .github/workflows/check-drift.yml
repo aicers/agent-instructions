@@ -1,0 +1,58 @@
+name: Shared instruction-block drift
+
+# Reusable workflow. A consuming repository calls it from its own CI:
+#
+#   jobs:
+#     instructions:
+#       uses: aicers/agent-instructions/.github/workflows/check-drift.yml@main
+#       with:
+#         blocks: "workflow rust rust-tls"
+#
+# It fails when the marked blocks in the caller's AGENTS.md differ from
+# the current blocks in aicers/agent-instructions.
+
+on:
+  workflow_call:
+    inputs:
+      blocks:
+        description: Space-separated block names to verify
+        required: true
+        type: string
+      target:
+        description: File in the caller repository holding the blocks
+        required: false
+        default: AGENTS.md
+        type: string
+      instructions-ref:
+        description: Ref of aicers/agent-instructions to compare against
+        required: false
+        default: main
+        type: string
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the calling repository
+        uses: actions/checkout@v4
+
+      - name: Check out aicers/agent-instructions
+        uses: actions/checkout@v4
+        with:
+          repository: aicers/agent-instructions
+          ref: ${{ inputs.instructions-ref }}
+          path: .agent-instructions
+
+      - name: Compare blocks
+        run: |
+          status=0
+          for block in ${{ inputs.blocks }}; do
+            python3 .agent-instructions/scripts/render.py check \
+              "${{ inputs.target }}" ".agent-instructions/blocks/$block.md" || status=1
+          done
+          if [ "$status" -ne 0 ]; then
+            echo "::error::AGENTS.md is out of date with aicers/agent-instructions."
+            echo "Do not edit the marked blocks here. Change them upstream,"
+            echo "then run scripts/sync.sh in aicers/agent-instructions."
+          fi
+          exit "$status"
