@@ -4,11 +4,13 @@
 # requests, using the operator's own `gh` credentials. No bot account and
 # no organization token are required.
 #
-#   scripts/sync.sh [--dry-run] <version-label> [repo ...]
+#   scripts/sync.sh [--dry-run] <tag> [repo ...]
 #
-# <version-label> names the branch (<github-username>/instructions-<label>)
-# and appears in the commit subject. Pass repository names to limit the
-# fan-out; the default is every repository in repos.json.
+# <tag> is a release tag of this repository, already pushed. Each
+# consuming repository gets its blocks rewritten and its
+# instructions-ref pin moved to that tag, in one pull request on
+# <github-username>/instructions-<tag>. Pass repository names to limit
+# the fan-out; the default is every repository in repos.json.
 #
 # --dry-run clones and renders, then prints the diff each pull request
 # would carry, without branching, committing, or pushing anything.
@@ -29,10 +31,19 @@ fi
 
 label=${1:-}
 if [[ -z $label ]]; then
-  echo "usage: scripts/sync.sh [--dry-run] <version-label> [repo ...]" >&2
+  echo "usage: scripts/sync.sh [--dry-run] <tag> [repo ...]" >&2
   exit 2
 fi
 shift
+
+# Consumers check out the blocks at this tag. Syncing to one that does
+# not exist yet would pin every repository to a ref their CI cannot
+# resolve, so refuse before touching anything.
+if ! git -C "$root" ls-remote --exit-code --tags origin \
+     "refs/tags/$label" >/dev/null 2>&1; then
+  echo "no tag '$label' on origin - tag the release first" >&2
+  exit 2
+fi
 
 config=$root/repos.json
 query() { python3 -c "$1" "$config" "${2:-}"; }
@@ -77,6 +88,7 @@ print("\n".join(json.load(open(sys.argv[1]))["repos"].get(sys.argv[2], [])))' \
     python3 "$root/scripts/render.py" apply \
       "$work/$repo/$target" "$root/blocks/$block.md"
   done
+  python3 "$root/scripts/pin.py" "$label" "$work/$repo"
 
   if git -C "$work/$repo" diff --quiet; then
     echo "    already current, no pull request"
@@ -93,8 +105,9 @@ print("\n".join(json.load(open(sys.argv[1]))["repos"].get(sys.argv[2], [])))' \
   git -C "$work/$repo" switch -c "$branch" --quiet
   git -C "$work/$repo" commit -aqm "Update shared instruction blocks to $label
 
-Synced from $org/agent-instructions. Do not edit the marked blocks in this
-repository; change them upstream and re-run the sync."
+Synced from $org/agent-instructions at $label, which the drift check is
+now pinned to. Do not edit the marked blocks in this repository; change
+them upstream, tag a release, and re-run the sync."
   git -C "$work/$repo" push -q -u origin HEAD
 
   gh pr create -R "$org/$repo" \

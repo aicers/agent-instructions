@@ -36,9 +36,10 @@ blocks/         the shared regions, one file per block
 repos.json      which repository consumes which blocks
 scripts/
   render.py       apply or verify one block in one file
-  test_render.py  tests for render.py, which every consumer's CI runs
-  sync.sh         fan out every block as pull requests
+  pin.py          move a consumer's instructions-ref to a release tag
+  sync.sh         fan out blocks and pins as pull requests
   lint_blocks.py  enforce the authoring rules in STYLE.md
+  test_*.py       tests for the two scripts consumers depend on
 STYLE.md        how to write a block
 ```
 
@@ -81,18 +82,26 @@ leaves the repository to name it.
 ## Changing a block
 
 1. Edit the file in `blocks/` and bump the version on its BEGIN marker.
-2. Open a pull request here. CI lints the Markdown and checks the
-   authoring rules.
-3. After it merges, fan it out:
+2. Open a pull request here. CI lints the Markdown, tests the two
+   scripts consumers depend on, and checks the authoring rules.
+3. After it merges, tag the release. Consumers pin to tags, so an
+   untagged change reaches nobody:
 
    ```sh
-   scripts/sync.sh rust-v2
+   git tag v2 && git push origin v2
+   ```
+
+4. Fan it out:
+
+   ```sh
+   scripts/sync.sh v2
    ```
 
    This clones each consuming repository, rewrites the marked regions,
-   and opens a pull request per repository under
-   `<github-username>/instructions-rust-v2`. Repositories already current
-   are skipped.
+   moves its `instructions-ref` pin to `v2`, and opens one pull request
+   per repository under `<github-username>/instructions-v2`.
+   Repositories already current are skipped, and a tag that is not on
+   `origin` is refused before anything is touched.
 
    Nothing here holds cross-repository permissions. The script runs on
    your workstation with your own `gh` credentials — there is no bot
@@ -100,15 +109,15 @@ leaves the repository to name it.
    diff each pull request would carry:
 
    ```sh
-   scripts/sync.sh --dry-run rust-v2
+   scripts/sync.sh --dry-run v2
    ```
 
-4. Review and merge the generated pull requests.
+5. Review and merge the generated pull requests.
 
 Limiting the fan-out to specific repositories is allowed:
 
 ```sh
-scripts/sync.sh rust-v2 bootroot roxyd
+scripts/sync.sh v2 bootroot roxyd
 ```
 
 ## Catching drift
@@ -121,11 +130,25 @@ jobs:
     uses: aicers/agent-instructions/.github/workflows/check-drift.yml@main
     with:
       blocks: "workflow rust rust-tls rust-crypto changelog"
+      instructions-ref: v1
 ```
 
-It fails when a repository's copy differs from this one — whether because
-someone edited a generated region locally, or because a sync pull request
-was never merged.
+It fails when a repository's copy differs from this repository at
+`instructions-ref` — whether because someone edited a generated region
+locally, or because a sync pull request was never merged.
+
+`instructions-ref` is a release tag, and it is required. Comparing
+against a branch would make every upstream edit turn ten repositories
+red at once, including pull requests that have nothing to do with the
+instructions, which is how a check gets ignored. Pinned, an edit here
+reaches a repository only through its sync pull request.
+
+That pin is also the answer to "which release is this repository on".
+It is deliberately not repeated in a comment: this input decides what
+the comparison runs against, so unlike a comment it cannot be wrong.
+The per-block `v<N>` on each BEGIN marker is a different thing — it
+tells a reader of `AGENTS.md` which revision of *that block* they are
+looking at, without leaving the file.
 
 If this repository is private, the caller's default `GITHUB_TOKEN` cannot
 read it; the checkout step then needs a token with access. Making this
@@ -137,5 +160,8 @@ repository public is the simpler option, since it holds no secrets.
 2. Restructure its `AGENTS.md`: convert bullets to `-`, drop section
    numbering, and insert the marker pairs where each block belongs.
 3. Replace its `CLAUDE.md` with a symbolic link to `AGENTS.md`.
-4. Add the drift-check job to its CI.
-5. Run `scripts/sync.sh <label> <repo>` to fill the regions.
+4. Add the drift-check job to its CI, including an `instructions-ref`
+   pin. `sync.sh` refuses a repository that consumes blocks without
+   one, rather than leaving it floating.
+5. Run `scripts/sync.sh <tag> <repo>` to fill the regions and set the
+   pin.
