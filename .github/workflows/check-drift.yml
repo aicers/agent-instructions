@@ -50,23 +50,64 @@ jobs:
       - name: Check out the calling repository
         uses: actions/checkout@v4
 
-      - name: Check out aicers/agent-instructions
+      # Two checkouts, deliberately. The scripts are mechanism, like this
+      # workflow file, and come from the same place it does. The blocks are
+      # content and come from the pin.
+      #
+      # Running the pinned release's scripts instead would freeze the check's
+      # implementation at whatever shipped alongside those blocks, so any new
+      # step here would fail on every repository still pinned to an older
+      # release -- reaching for a subcommand that release has never heard of.
+      - name: Check out the check
+        uses: actions/checkout@v4
+        with:
+          repository: aicers/agent-instructions
+          ref: main
+          path: .agent-instructions
+
+      - name: Check out the pinned blocks
         uses: actions/checkout@v4
         with:
           repository: aicers/agent-instructions
           ref: ${{ inputs.instructions-ref }}
-          path: .agent-instructions
+          path: .agent-instructions-blocks
 
       - name: Compare blocks
         run: |
           status=0
           for block in ${{ inputs.blocks }}; do
             python3 .agent-instructions/scripts/render.py check \
-              "${{ inputs.target }}" ".agent-instructions/blocks/$block.md" || status=1
+              "${{ inputs.target }}" \
+              ".agent-instructions-blocks/blocks/$block.md" || status=1
           done
           if [ "$status" -ne 0 ]; then
             echo "::error::AGENTS.md is out of date with aicers/agent-instructions."
             echo "Do not edit the marked blocks here. Change them upstream,"
             echo "then run scripts/sync.sh in aicers/agent-instructions."
           fi
+          exit "$status"
+
+      # A block retired upstream is dropped from `blocks`, and the step above
+      # then stops looking at it -- leaving a stale copy of a rule sitting
+      # beside its replacement with nothing to notice. Compare the other
+      # direction too.
+      - name: Reject blocks this repository no longer lists
+        env:
+          BLOCKS: ${{ inputs.blocks }}
+          TARGET: ${{ inputs.target }}
+        run: |
+          set -euo pipefail
+          listed=" $BLOCKS "
+          status=0
+          carried=$(python3 .agent-instructions/scripts/render.py names "$TARGET")
+          for present in $carried; do
+            case "$listed" in
+              *" $present "*) ;;
+              *)
+                echo "::error::$TARGET carries shared:$present, which this"\
+                     "repository no longer lists. Remove the marker pair."
+                status=1
+                ;;
+            esac
+          done
           exit "$status"

@@ -135,6 +135,49 @@ def main() -> int:
             "a block file without a BEGIN marker is rejected",
         )
 
+        print("names")
+        listed = subprocess.run(
+            [sys.executable, str(RENDER), "names", str(target)],
+            capture_output=True,
+            text=True,
+        )
+        check(listed.returncode == 0, "names exits 0")
+        check(
+            listed.stdout.split() == ["demo", "other"],
+            "names reports every block, in file order",
+        )
+
+        print("remove")
+        result = subprocess.run(
+            [sys.executable, str(RENDER), "remove", str(target), "other"],
+            capture_output=True,
+            text=True,
+        )
+        text = target.read_text(encoding="utf-8")
+        check(result.returncode == 0, "remove exits 0")
+        check("shared:other" not in text, "the marker pair is gone")
+        check("- untouched" not in text, "its content is gone with it")
+        check("- current text" in text, "the sibling block survives")
+        check(
+            text.startswith("# Title\n") and text.endswith("- local content\n"),
+            "content outside the markers is preserved",
+        )
+        check(
+            "\n\n\n" not in text,
+            "no blank-line scar is left behind",
+        )
+
+        result = subprocess.run(
+            [sys.executable, str(RENDER), "remove", str(target), "other"],
+            capture_output=True,
+            text=True,
+        )
+        check(result.returncode == 0, "removing an absent block is not an error")
+        check(
+            target.read_text(encoding="utf-8") == text,
+            "removing an absent block writes nothing",
+        )
+
     print()
     if failures:
         print(f"{len(failures)} failure(s)")

@@ -35,7 +35,7 @@ better commit-message rules that the rest never received.
 blocks/         the shared regions, one file per block
 repos.json      which repository consumes which blocks
 scripts/
-  render.py       apply or verify one block in one file
+  render.py       apply, verify, list, or retire a block in one file
   pin.py          move a consumer's instructions-ref to a release tag
   sync.sh         fan out blocks and pins as pull requests
   lint_blocks.py  enforce the authoring rules in STYLE.md
@@ -77,7 +77,7 @@ everything outside them belongs to the repository:
 ...generated...
 <!-- END shared:workflow -->
 
-<!-- BEGIN shared:rust v1 -->
+<!-- BEGIN shared:rust v2 -->
 ...generated...
 <!-- END shared:rust -->
 
@@ -87,9 +87,9 @@ Repository-specific commands, paths, and gates go here.
 ```
 
 Blocks are deliberately repository-neutral, so anything naming a path, a
-product, or a command lives in the repository's own sections. `rust-tls`,
-for instance, says the TLS verifiers live in one dedicated module and
-leaves the repository to name it.
+product, or a command lives in the repository's own sections. The Rust
+block's certificate-verification rule, for instance, says verification
+lives in one dedicated module and leaves the repository to name it.
 
 ## Changing a block
 
@@ -132,6 +132,18 @@ Limiting the fan-out to specific repositories is allowed:
 scripts/sync.sh v2 bootroot roxyd
 ```
 
+## Retiring a block
+
+Drop it from `repos.json` and delete the file. `sync.sh` then removes the
+region from every repository that carried it, because a retired block is
+otherwise the one thing nothing looks at: no file renders it, and the
+drift check only compares the blocks a repository still lists. A stale
+copy of a rule would sit beside its replacement indefinitely.
+
+The drift check compares the other direction too, and fails on a marker
+the repository no longer lists — so a retirement that never reached a
+repository is visible rather than silent.
+
 ## Catching drift
 
 Each consuming repository calls the reusable workflow from its own CI:
@@ -141,8 +153,8 @@ jobs:
   instructions:
     uses: aicers/agent-instructions/.github/workflows/check-drift.yml@main
     with:
-      blocks: "workflow rust rust-tls rust-crypto changelog"
-      instructions-ref: v1
+      blocks: "workflow rust changelog"
+      instructions-ref: v2
 ```
 
 It fails when a repository's copy differs from this repository at
@@ -162,8 +174,16 @@ The per-block `v<N>` on each BEGIN marker is a different thing — it
 tells a reader of `AGENTS.md` which revision of *that block* they are
 looking at, without leaving the file.
 
+The pin covers the blocks, and only the blocks. The workflow checks the
+scripts out separately, from wherever it comes from itself, because they
+are mechanism rather than content — the same reason `uses:` sits at
+`@main`. Pin the scripts to the release and the check's implementation
+freezes at whatever shipped with those blocks, so a step added here
+would fail on every repository still on an older release, calling a
+subcommand that release has never heard of.
+
 If this repository is private, the caller's default `GITHUB_TOKEN` cannot
-read it; the checkout step then needs a token with access. Making this
+read it; the checkout steps then need a token with access. Making this
 repository public is the simpler option, since it holds no secrets.
 
 ## Onboarding a repository

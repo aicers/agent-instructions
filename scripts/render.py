@@ -9,6 +9,12 @@ A block is delimited in the target file by
 
 `apply` replaces everything between (and including) the markers with the
 current contents of the block file. `check` reports drift without writing.
+
+`names` prints the block names a file carries, and `remove` deletes a
+marker pair and its content. A block retired upstream leaves its region
+behind otherwise: nothing renders it, and the drift check only compares
+the blocks a repository still lists, so a stale copy of a rule sits
+alongside its replacement with nothing to notice.
 """
 
 from __future__ import annotations
@@ -41,13 +47,45 @@ def span(text: str, name: str, target: Path) -> tuple[int, int]:
     return begin.start(), end.end()
 
 
+def names(text: str) -> list[str]:
+    return re.findall(r"<!--\s*BEGIN shared:([\w.-]+)\b[^>]*-->", text)
+
+
+def remove(target: Path, name: str) -> int:
+    text = target.read_text(encoding="utf-8")
+    if name not in names(text):
+        print(f"{target}: no shared:{name} block to remove")
+        return 0
+    start, stop = span(text, name, target)
+    # Collapse to exactly one blank line where the region was, so removing a
+    # block leaves no scar and the file stays idempotent under markdownlint.
+    head = text[:start].rstrip("\n")
+    tail = text[stop:].lstrip("\n")
+    joined = f"{head}\n\n{tail}" if head and tail else f"{head}{tail}"
+    target.write_text(joined.rstrip("\n") + "\n", encoding="utf-8")
+    print(f"removed shared:{name} from {target}")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("mode", choices=("apply", "check"))
+    parser.add_argument("mode", choices=("apply", "check", "names", "remove"))
     parser.add_argument("target", type=Path)
-    parser.add_argument("block", type=Path)
+    parser.add_argument("block", type=Path, nargs="?")
     args = parser.parse_args()
 
+    if args.mode == "names":
+        for found in names(args.target.read_text(encoding="utf-8")):
+            print(found)
+        return 0
+
+    if args.mode == "remove":
+        if args.block is None:
+            sys.exit("remove needs a block name")
+        return remove(args.target, str(args.block))
+
+    if args.block is None:
+        sys.exit(f"{args.mode} needs a block file")
     name = block_name(args.block)
     want = args.block.read_text(encoding="utf-8").rstrip("\n")
     text = args.target.read_text(encoding="utf-8")
