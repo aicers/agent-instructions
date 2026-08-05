@@ -23,20 +23,22 @@ jobs:
   instructions:
     uses: aicers/agent-instructions/.github/workflows/check-drift.yml@main
     with:
-      blocks: "workflow rust"
+      blocks: "workflow rust rust-tls"
       instructions-ref: v1
   build:
     runs-on: ubuntu-latest
     steps:
       - run: echo build
+    outputs:
+      blocks: irrelevant
 """
 
 failures: list[str] = []
 
 
-def run(tag: str, root: Path) -> subprocess.CompletedProcess:
+def run(tag: str, root: Path, *blocks: str) -> subprocess.CompletedProcess:
     return subprocess.run(
-        [sys.executable, str(PIN), tag, str(root)],
+        [sys.executable, str(PIN), tag, str(root), *blocks],
         capture_output=True,
         text=True,
     )
@@ -62,7 +64,7 @@ def main() -> int:
         path = repo(root, WORKFLOW)
 
         print("moving the pin")
-        result = run("v3", root)
+        result = run("v3", root, "workflow", "rust")
         text = path.read_text(encoding="utf-8")
         check(result.returncode == 0, "exits 0")
         check("instructions-ref: v3" in text, "the pin moves to the new tag")
@@ -73,22 +75,31 @@ def main() -> int:
             text.count("uses: aicers/agent-instructions") == 1,
             "the workflow reference is left alone",
         )
+        check(
+            'blocks: "workflow rust"' in text,
+            "the blocks list follows what the sync applied",
+        )
+        check("rust-tls" not in text, "a retired block stops being listed")
+        check(
+            "blocks: irrelevant" in text,
+            "a blocks key at another indent is left alone",
+        )
 
         print("idempotence")
         before = path.read_text(encoding="utf-8")
-        result = run("v3", root)
+        result = run("v3", root, "workflow", "rust")
         check(result.returncode == 0, "re-pinning exits 0")
         check(
             path.read_text(encoding="utf-8") == before,
             "re-pinning changes nothing",
         )
-        check("already pinned" in result.stdout, "re-pinning says so")
+        check(result.stdout.strip() == "", "re-pinning says nothing")
 
         print("several workflow files")
         multi = Path(tmp) / "multi"
         first = repo(multi, WORKFLOW, "ci.yml")
         second = repo(multi, WORKFLOW.replace("v1", "v2"), "nightly.yaml")
-        check(run("v4", multi).returncode == 0, "exits 0")
+        check(run("v4", multi, "workflow", "rust").returncode == 0, "exits 0")
         check(
             "instructions-ref: v4" in first.read_text(encoding="utf-8")
             and "instructions-ref: v4" in second.read_text(encoding="utf-8"),
@@ -98,7 +109,7 @@ def main() -> int:
         print("a repository with no pin")
         bare = Path(tmp) / "bare"
         unpinned = repo(bare, "name: CI\non: [push]\n")
-        result = run("v3", bare)
+        result = run("v3", bare, "workflow")
         check(result.returncode != 0, "exits non-zero rather than silently")
         check("add the drift-check job" in result.stderr, "says what to do")
         check(
@@ -109,7 +120,14 @@ def main() -> int:
         print("a repository with no workflows at all")
         empty = Path(tmp) / "empty"
         empty.mkdir()
-        check(run("v3", empty).returncode != 0, "exits non-zero")
+        check(run("v3", empty, "workflow").returncode != 0, "exits non-zero")
+
+        print("a pin with no blocks list beside it")
+        nolist = Path(tmp) / "nolist"
+        repo(nolist, WORKFLOW.replace('      blocks: "workflow rust rust-tls"\n', ""))
+        result = run("v3", nolist, "workflow")
+        check(result.returncode != 0, "exits non-zero")
+        check("compares nothing" in result.stderr, "says why")
 
     print()
     if failures:

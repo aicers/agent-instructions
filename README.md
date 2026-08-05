@@ -110,8 +110,10 @@ lives in one dedicated module and leaves the repository to name it.
    ```
 
    This clones each consuming repository, rewrites the marked regions,
-   moves its `instructions-ref` pin to `v2`, and opens one pull request
-   per repository under `<github-username>/instructions-v2`.
+   drops any block the repository no longer takes, sets the drift
+   check's `blocks` and `instructions-ref` inputs to match, and opens
+   one pull request per repository under
+   `<github-username>/instructions-v2`.
    Repositories already current are skipped, and a tag that is not on
    `origin` is refused before anything is touched.
 
