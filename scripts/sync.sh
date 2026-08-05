@@ -103,7 +103,7 @@ print("\n".join(json.load(open(sys.argv[1]))["repos"].get(sys.argv[2], [])))' \
     fi
   done
 
-  python3 "$root/scripts/pin.py" "$label" "$work/$repo"
+  python3 "$root/scripts/pin.py" "$label" "$work/$repo" "${blocks[@]}"
 
   if git -C "$work/$repo" diff --quiet; then
     echo "    already current, no pull request"
