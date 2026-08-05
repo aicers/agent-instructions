@@ -88,6 +88,21 @@ print("\n".join(json.load(open(sys.argv[1]))["repos"].get(sys.argv[2], [])))' \
     python3 "$root/scripts/render.py" apply \
       "$work/$repo/$target" "$root/blocks/$block.md"
   done
+
+  # A block retired upstream leaves its region behind: nothing renders it,
+  # and the drift check only compares the blocks a repository still lists.
+  # Remove any the repository no longer takes.
+  for present in $(python3 "$root/scripts/render.py" names \
+    "$work/$repo/$target"); do
+    keep=false
+    for block in "${blocks[@]}"; do
+      [ "$present" = "$block" ] && keep=true
+    done
+    if [ "$keep" = false ]; then
+      python3 "$root/scripts/render.py" remove "$work/$repo/$target" "$present"
+    fi
+  done
+
   python3 "$root/scripts/pin.py" "$label" "$work/$repo"
 
   if git -C "$work/$repo" diff --quiet; then

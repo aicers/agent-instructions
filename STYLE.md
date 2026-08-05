@@ -15,6 +15,24 @@ This is not a style preference. The drift check is a byte comparison; the
 moment a block needs per-repository substitution, it needs a template
 engine, and the check stops being trivially correct.
 
+## What earns its own block
+
+Split by language or ecosystem, never by which features a repository
+happens to use today. One `rust` block covers async, certificates, and
+cryptography, each under a heading that says when it applies — "Where
+the crate has async code:" — so it is silent in a crate that has none
+and already present the day one is added.
+
+Splitting on current usage looks tidier and leaves a hole nothing can
+see. The drift check compares the blocks a repository carries; it cannot
+notice a block it should have started carrying. The person who writes
+the first `async fn` in a crate that had none is exactly the person who
+does not know a rule about `JoinHandle` exists somewhere else.
+
+A repository does not silently become a Node repository, so that split
+is safe. It does not silently grow a `CHANGELOG.md` either — that is a
+deliberate act, and the block follows it.
+
 ## Markers
 
 The first and last lines are the markers, and the name must match the
