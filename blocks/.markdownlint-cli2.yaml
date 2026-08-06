@@ -1,0 +1,17 @@
+# Blocks are fragments, not documents: they are spliced into a consuming
+# file at a heading level that file already established, and STYLE.md
+# requires them to open at `##`. MD041 is configured to that convention
+# rather than switched off, and it is configured here rather than in the
+# root config because it applies to this directory alone.
+#
+# An in-file `markdownlint-configure-file` comment cannot be used:
+# `scripts/render.py` copies a block verbatim into every consumer's
+# instructions file and verifies the two byte for byte, so the comment
+# would travel with it and impose `level: 2` on documents that legitimately
+# open at `#`.
+#
+# A `.markdownlint-cli2.yaml` here merges with the root config; a
+# `.markdownlint.yaml` would replace it.
+config:
+  MD041:
+    level: 2

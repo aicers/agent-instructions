@@ -3,14 +3,9 @@ globs:
 ignores:
   - ".github/**"
 config:
-  MD004:
-    style: dash
   MD013:
     line_length: 80
     code_blocks: false
     tables: false
   MD024:
     siblings_only: true
-  # Blocks are fragments: they open at a heading level the consuming file
-  # establishes, and they legitimately start with an HTML comment.
-  MD041: false
