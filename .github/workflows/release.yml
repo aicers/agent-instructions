@@ -42,7 +42,7 @@ jobs:
 
       # The changelog entry is the release notes. A missing entry fails the
       # release rather than falling back to a generated line: notes reading
-      # "Release 1.2.0" tell a consumer nothing, and the pull request they
+      # "Release 0.2.0" tell a consumer nothing, and the pull request they
       # are about to review is generated too.
       - name: Extract the release notes
         env:

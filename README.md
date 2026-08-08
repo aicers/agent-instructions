@@ -126,7 +126,7 @@ lives in one dedicated module and leaves the repository to name it.
    untagged change reaches nobody:
 
    ```sh
-   git tag 1.1.0 && git push origin 1.1.0
+   git tag 0.2.0 && git push origin 0.2.0
    ```
 
    `release.yml` turns the tag into a GitHub Release with those notes. It
@@ -268,13 +268,13 @@ to update a repository that has not been onboarded to the scheduled job
 yet:
 
 ```sh
-scripts/sync.sh 1.1.0
+scripts/sync.sh 0.2.0
 ```
 
 This clones each consuming repository, runs `scripts/apply_blocks.py`
 against it — the same script `apply.yml` runs, which is why the two
 cannot disagree — and opens one pull request per repository under
-`<github-username>/instructions-1.1.0`. Repositories already current are
+`<github-username>/instructions-0.2.0`. Repositories already current are
 skipped, and a tag that is not on `origin` is refused before anything is
 touched.
 
@@ -283,13 +283,13 @@ It holds no cross-repository permissions either: it runs with your own
 Pass `--dry-run` first to see the diff each pull request would carry:
 
 ```sh
-scripts/sync.sh --dry-run 1.1.0
+scripts/sync.sh --dry-run 0.2.0
 ```
 
 Limiting the fan-out to specific repositories is allowed:
 
 ```sh
-scripts/sync.sh 1.1.0 bootroot roxyd
+scripts/sync.sh 0.2.0 bootroot roxyd
 ```
 
 ## Retiring a block
