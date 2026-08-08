@@ -39,6 +39,24 @@
 - Never act on failed or garbled command output. Re-verify every create
   and edit with a structured `--json` re-query before reporting success.
 
+## Markdown lint configuration
+
+- The repository-root `.markdownlint-cli2.yaml` carries `globs`,
+  `ignores`, and `MD024: siblings_only`. No other rule configuration
+  belongs there, and no rule is disabled there.
+- Configure or disable any other rule at the narrowest scope that
+  works, choosing in this order: the line, then the file, then the
+  directory. Use `markdownlint-disable-next-line` for one line,
+  `markdownlint-disable-file` for one file, and a
+  `.markdownlint-cli2.yaml` beside the files for one directory.
+- A directory config named `.markdownlint-cli2.yaml` merges with the
+  root config; one named `.markdownlint.yaml` replaces it wholesale.
+  Use the former.
+- Scope narrowly because a global entry outlives its reason. It
+  silences the file that needed it and every file added afterwards
+  that should have tripped the rule, and nothing in the config records
+  which was which.
+
 ## Attribution
 
 - Do NOT add `Co-Authored-By` lines naming an AI (`Claude`, `Codex`,
