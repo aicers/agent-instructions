@@ -14,7 +14,7 @@
 #
 # <tag> is a release tag of this repository, already pushed. Each
 # consuming repository gets its blocks rewritten and its
-# instructions-ref pin moved to that tag, in one pull request on
+# .agents/instructions.toml moved to that tag, in one pull request on
 # <github-username>/instructions-<tag>. Pass repository names to limit
 # the fan-out; the default is every repository in repos.json.
 #
@@ -55,7 +55,6 @@ config=$root/repos.json
 query() { python3 -c "$1" "$config" "${2:-}"; }
 
 org=$(query 'import json,sys; print(json.load(open(sys.argv[1]))["org"])')
-target=$(query 'import json,sys; print(json.load(open(sys.argv[1]))["target"])')
 
 repos=("$@")
 if [[ ${#repos[@]} -eq 0 ]]; then
@@ -75,26 +74,27 @@ opened=0
 skipped=0
 
 for repo in "${repos[@]}"; do
-  blocks=()
-  while IFS= read -r line; do
-    [[ -n $line ]] && blocks+=("$line")
-  done < <(query 'import json,sys
-print("\n".join(json.load(open(sys.argv[1]))["repos"].get(sys.argv[2], [])))' \
-    "$repo")
-
-  if [[ ${#blocks[@]} -eq 0 ]]; then
+  # Which blocks this repository takes is apply_blocks.py's to resolve,
+  # out of repos.json. All this needs to know is whether it is listed at
+  # all, so that a mistyped name on the command line is skipped here
+  # rather than aborting a fan-out that has already opened pull requests.
+  if ! query 'import json,sys
+sys.exit(0 if sys.argv[2] in json.load(open(sys.argv[1]))["repos"] else 1)' \
+       "$repo"; then
     echo "==> $org/$repo: not in repos.json, skipping" >&2
     continue
   fi
 
-  echo "==> $org/$repo (${blocks[*]})"
+  echo "==> $org/$repo"
   gh repo clone "$org/$repo" "$work/$repo" -- --depth=1 --quiet
 
-  # Applying the blocks, retiring the ones this repository dropped, and
-  # moving the pin is one sequence, and `apply.yml` needs the same one.
-  # It lives in apply_blocks.py so the two drivers cannot disagree.
-  python3 "$root/scripts/apply_blocks.py" --target "$target" \
-    "$root/blocks" "$work/$repo" "$label" "${blocks[@]}"
+  # Applying the blocks, retiring the ones repos.json dropped, and moving
+  # the pin is one sequence, and `apply.yml` needs the same one. It lives
+  # in apply_blocks.py so the two drivers cannot disagree.
+  python3 "$root/scripts/apply_blocks.py" \
+    "$root" "$work/$repo" "$repo" "$label"
+
+  blocks=$(python3 "$root/scripts/pin_file.py" read "$work/$repo" blocks)
 
   if git -C "$work/$repo" diff --quiet; then
     echo "    already current, no pull request"
@@ -121,7 +121,7 @@ them upstream, tag a release, and re-run the sync."
     --title "Update shared instruction blocks to $label" \
     --body "Synced from \`$org/agent-instructions\` by \`scripts/sync.sh\`.
 
-Blocks in this pull request: ${blocks[*]}
+Blocks in this pull request: $blocks
 
 The marked blocks are generated. Change the wording upstream in
 \`$org/agent-instructions\` rather than editing it here — the drift check in CI
