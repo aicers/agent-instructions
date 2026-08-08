@@ -1,4 +1,4 @@
-<!-- BEGIN shared:changelog v1 -->
+<!-- BEGIN shared:changelog -->
 ## Changelog
 
 - `CHANGELOG.md` records what changed for a user of the **last release**,

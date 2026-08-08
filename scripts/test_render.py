@@ -15,14 +15,14 @@ from pathlib import Path
 
 RENDER = Path(__file__).resolve().parent / "render.py"
 
-BLOCK = """<!-- BEGIN shared:demo v2 -->
+BLOCK = """<!-- BEGIN shared:demo -->
 ## Demo
 
 - current text
 <!-- END shared:demo -->
 """
 
-OTHER = """<!-- BEGIN shared:other v1 -->
+OTHER = """<!-- BEGIN shared:other -->
 ## Other
 
 - untouched
@@ -83,9 +83,12 @@ def main() -> int:
         check(result.returncode == 0, "apply exits 0")
         check("stale text" not in text, "apply removes the old body")
         check("- current text" in text, "apply writes the new body")
+        # Markers used to carry a version. A repository synced before that
+        # was dropped still has one, so apply has to replace the marker
+        # itself rather than only the body between the markers.
         check(
-            "<!-- BEGIN shared:demo v2 -->" in text,
-            "apply updates the version on the marker",
+            "<!-- BEGIN shared:demo -->" in text and " v1 -->" not in text,
+            "apply replaces a marker still carrying a version",
         )
         check(
             text.startswith("# Title\n") and text.endswith("- local content\n"),

@@ -1,4 +1,4 @@
-<!-- BEGIN shared:workflow v1 -->
+<!-- BEGIN shared:workflow -->
 ## Language
 
 - Code, comments, commit messages, PR descriptions, and issues are written

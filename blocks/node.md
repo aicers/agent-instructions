@@ -1,4 +1,4 @@
-<!-- BEGIN shared:node v1 -->
+<!-- BEGIN shared:node -->
 ## Package manager
 
 - This project uses **pnpm** exclusively. NEVER use `npm`, `bun`, `yarn`,
