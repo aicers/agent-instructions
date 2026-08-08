@@ -210,6 +210,27 @@ def main() -> int:
             "nothing is written",
         )
 
+        # Naming a block before inserting its marker pair is how a
+        # repository takes on a new block, and getting the order wrong is
+        # the one failure the scheduled job hits after onboarding. It has
+        # to name the missing pair: the tree is left part-applied, and
+        # neither driver commits it -- sync.sh throws the clone away and
+        # apply.yml fails the job before its commit step -- so the message
+        # is all anyone sees.
+        print("a listed block the repository has no markers for")
+        partial = consumer(
+            tmp / "partial",
+            agents="# Instructions\n\n"
+            "<!-- BEGIN shared:demo -->\nstale text\n<!-- END shared:demo -->\n",
+        )
+        result = run(blocks, partial, "1.0.0", "demo", "other")
+        check(result.returncode != 0, "exits non-zero")
+        check(
+            "no shared:other block" in result.stderr
+            and "add the markers first" in result.stderr,
+            "names the missing pair rather than the block that applied",
+        )
+
         print("a repository with no target file")
         headless = tmp / "headless"
         (headless / ".github" / "workflows").mkdir(parents=True)

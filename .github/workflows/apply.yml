@@ -31,6 +31,13 @@ name: Apply shared instruction blocks
 # The organization setting "Allow GitHub Actions to create and approve
 # pull requests" has to be enabled, or the last step fails.
 #
+# The pull request arrives with no checks on it: GitHub starts no workflow
+# run for anything a GITHUB_TOKEN did, so the caller's own CI -- its drift
+# check included -- does not fire on the branch or on the request. Closing
+# and reopening the request starts them. Firing them directly would mean
+# the caller holding a bot or app credential rather than only the token it
+# already has, which is the trade this workflow exists to avoid.
+#
 # No permissions block here. A called workflow can only narrow what the
 # caller granted, so restating them would add a way for this file to
 # conflict with a correct caller and nothing else.

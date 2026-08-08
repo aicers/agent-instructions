@@ -173,6 +173,14 @@ open one.
 The organization setting *Allow GitHub Actions to create and approve pull
 requests* has to be enabled, or the pull-request step fails.
 
+That pull request arrives with no checks on it. GitHub starts no workflow
+run for anything a `GITHUB_TOKEN` did, so neither the branch push nor the
+pull request triggers the repository's own CI — its drift check included.
+Close and reopen the pull request to start them, or push any commit to the
+branch. This is the cost of the caller holding nothing but its own default
+token; a bot account or an app installation would fire CI, and would be a
+credential to manage in exchange.
+
 `workflow_dispatch` is in the caller for a reason: GitHub disables a
 scheduled workflow in a repository with 60 days of no activity, and does
 so quietly, so a dormant repository can stop pulling with nothing to show
