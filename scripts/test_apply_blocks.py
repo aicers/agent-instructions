@@ -198,6 +198,18 @@ def main() -> int:
             "nothing is written",
         )
 
+        # `blocks` is a required workflow_call input, but a required input
+        # accepts an empty string, and `$BLOCKS` then expands to nothing.
+        # Every region would be a block the caller no longer lists.
+        print("a caller that names no blocks")
+        nameless = consumer(tmp / "nameless")
+        result = run(blocks, nameless, "1.0.0")
+        check(result.returncode != 0, "exits non-zero")
+        check(
+            (nameless / "AGENTS.md").read_text(encoding="utf-8") == AGENTS,
+            "nothing is written",
+        )
+
         print("a repository with no target file")
         headless = tmp / "headless"
         (headless / ".github" / "workflows").mkdir(parents=True)

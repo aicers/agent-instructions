@@ -36,7 +36,9 @@ jobs:
       # Before the release exists, not after: a release with nothing in it
       # is already in every consumer's inbox by the time anyone looks.
       - name: Guard the release surface
-        run: scripts/check_release_surface.sh "${{ steps.version.outputs.version }}"
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: scripts/check_release_surface.sh "$VERSION"
 
       # The changelog entry is the release notes. A missing entry fails the
       # release rather than falling back to a generated line: notes reading

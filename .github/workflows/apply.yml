@@ -96,9 +96,11 @@ jobs:
       # request nobody had changed.
       - name: Switch to the update branch
         id: branch
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
         run: |
           set -euo pipefail
-          branch="shared-instructions/${{ steps.release.outputs.tag }}"
+          branch="shared-instructions/$TAG"
           echo "name=$branch" >> "$GITHUB_OUTPUT"
           # What the branch is measured against, recorded before leaving it.
           echo "base=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"

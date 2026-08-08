@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Bring one consuming repository up to a release of the shared blocks.
 
-    apply_blocks.py [--target FILE] <blocks-dir> <repo-root> <tag> [block ...]
+    apply_blocks.py [--target FILE] <blocks-dir> <repo-root> <tag> <block>...
 
 Applies each named block into `<repo-root>/<target>`, drops any block the
 repository carries that the release no longer has or the caller no longer
@@ -62,6 +62,16 @@ def main() -> int:
     )
     args = parser.parse_args()
 
+    # Naming nothing would remove every region the repository carries, since
+    # each one is then a block it no longer lists. No driver means that:
+    # sync.sh skips a repository whose list is empty, and apply.yml declares
+    # the input required — but `required: true` accepts an empty string, and
+    # `$BLOCKS` then expands to no arguments at all. Refuse it for the same
+    # reason the empty blocks directory below is refused.
+    if not args.blocks:
+        print("name at least one block to apply", file=sys.stderr)
+        return 1
+
     target = args.root / args.target
     if not target.is_file():
         print(f"{target}: no such file", file=sys.stderr)
@@ -80,7 +90,7 @@ def main() -> int:
     # Unless none of them exist, which is not a retirement — that is a
     # blocks directory pointing somewhere unintended, and applying it would
     # strip every region the repository has.
-    if args.blocks and not wanted:
+    if not wanted:
         print(
             f"{args.blocks_dir} carries none of the blocks this repository"
             " lists; refusing to treat that as retiring all of them",

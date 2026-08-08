@@ -41,7 +41,7 @@ scripts/
   sync.sh         fan out apply_blocks.py to every repository at once
   lint_blocks.py  enforce the authoring rules in STYLE.md
   check_release_surface.sh  refuse a release with nothing in it
-  test_*.py       tests for the scripts consumers depend on
+  test_*.py       tests for the scripts above, run in CI
 STYLE.md        how to write a block
 CHANGELOG.md    what each release changed; also its release notes
 ```
@@ -274,9 +274,12 @@ freezes at whatever shipped with those blocks, so a step added here
 would fail on every repository still on an older release, calling a
 subcommand that release has never heard of.
 
-If this repository is private, the caller's default `GITHUB_TOKEN` cannot
-read it; the checkout steps then need a token with access. Making this
-repository public is the simpler option, since it holds no secrets.
+Both reusable workflows read this repository with the caller's own
+default `GITHUB_TOKEN` — the checkouts in either, and `apply.yml`'s
+lookup of the latest release. That token cannot read a private
+repository, and neither workflow takes an input to hand it a different
+one, so this repository is public. It holds no secrets, which is what
+makes that the simpler answer rather than a compromise.
 
 ## Onboarding a repository
 
