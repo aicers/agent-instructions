@@ -105,6 +105,20 @@ def main() -> int:
             "compares against the previous tag in version order",
         )
 
+        # The guard resolves the previous release out of the tag list, so a
+        # checkout that fetched no tags finds no predecessor for any tag —
+        # indistinguishable from a first release unless it is checked for.
+        # Reporting "nothing to compare" there would wave through exactly
+        # the release this exists to refuse.
+        print("a tag this checkout cannot see")
+        result = run(root, "9.9.9")
+        check(result.returncode != 0, "exits non-zero rather than passing")
+        check(
+            "no release tag '9.9.9' in this checkout" in result.stderr,
+            "says the tag is missing rather than that there is nothing to"
+            " compare",
+        )
+
         print("no tag given")
         check(run(root).returncode == 2, "exits 2")
 

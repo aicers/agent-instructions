@@ -18,8 +18,9 @@
 # against.
 #
 # Requires history and tags, so it runs after an actions/checkout with
-# fetch-depth: 0 and fetch-tags: true. Without them the previous tag
-# cannot resolve, and the guard would pass while comparing nothing.
+# fetch-depth: 0 and fetch-tags: true. Without them no tag resolves, so
+# the guard refuses to run rather than reporting a comparison it never
+# made.
 
 set -euo pipefail
 
@@ -31,12 +32,23 @@ fi
 
 tags=$(git tag --list | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V || true)
 
+# A tag that is not in the list resolves no predecessor, which reads
+# exactly like a first release. It is not one: it is a checkout that
+# fetched no tags, and treating it as "nothing to compare" would wave
+# through the release this guard exists to refuse. Separate the two
+# before the search rather than inferring afterwards.
+if ! printf '%s\n' "$tags" | grep -qFx "$new_tag"; then
+  echo "no release tag '$new_tag' in this checkout - tag the release" \
+       "first, and check out with fetch-depth: 0 and fetch-tags: true" >&2
+  exit 2
+fi
+
 # `grep -B1 -Fx` prints the predecessor together with the match, so the
 # first line is the predecessor. For the first release tag, or one that
 # sorts below every existing tag, that first line is the tag itself.
-prev_tag=$(printf '%s\n' "$tags" | grep -B1 -Fx "$new_tag" | head -n1 || true)
+prev_tag=$(printf '%s\n' "$tags" | grep -B1 -Fx "$new_tag" | head -n1)
 
-if [[ -z $prev_tag || $prev_tag == "$new_tag" ]]; then
+if [[ $prev_tag == "$new_tag" ]]; then
   echo "no release before $new_tag; nothing to compare"
   exit 0
 fi
