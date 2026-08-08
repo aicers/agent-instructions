@@ -6,6 +6,12 @@
 #
 #   scripts/sync.sh [--dry-run] <tag> [repo ...]
 #
+# This is the urgent path. Normally each consumer applies a release to
+# itself on a schedule, through `.github/workflows/apply.yml`, and nobody
+# has to remember anything. Reach for this script when a release should
+# not wait for the next scheduled run — withdrawing a rule, say — or to
+# push a repository that has not been onboarded to the scheduled job yet.
+#
 # <tag> is a release tag of this repository, already pushed. Each
 # consuming repository gets its blocks rewritten and its
 # instructions-ref pin moved to that tag, in one pull request on
@@ -84,26 +90,11 @@ print("\n".join(json.load(open(sys.argv[1]))["repos"].get(sys.argv[2], [])))' \
   echo "==> $org/$repo (${blocks[*]})"
   gh repo clone "$org/$repo" "$work/$repo" -- --depth=1 --quiet
 
-  for block in "${blocks[@]}"; do
-    python3 "$root/scripts/render.py" apply \
-      "$work/$repo/$target" "$root/blocks/$block.md"
-  done
-
-  # A block retired upstream leaves its region behind: nothing renders it,
-  # and the drift check only compares the blocks a repository still lists.
-  # Remove any the repository no longer takes.
-  for present in $(python3 "$root/scripts/render.py" names \
-    "$work/$repo/$target"); do
-    keep=false
-    for block in "${blocks[@]}"; do
-      [ "$present" = "$block" ] && keep=true
-    done
-    if [ "$keep" = false ]; then
-      python3 "$root/scripts/render.py" remove "$work/$repo/$target" "$present"
-    fi
-  done
-
-  python3 "$root/scripts/pin.py" "$label" "$work/$repo" "${blocks[@]}"
+  # Applying the blocks, retiring the ones this repository dropped, and
+  # moving the pin is one sequence, and `apply.yml` needs the same one.
+  # It lives in apply_blocks.py so the two drivers cannot disagree.
+  python3 "$root/scripts/apply_blocks.py" --target "$target" \
+    "$root/blocks" "$work/$repo" "$label" "${blocks[@]}"
 
   if git -C "$work/$repo" diff --quiet; then
     echo "    already current, no pull request"

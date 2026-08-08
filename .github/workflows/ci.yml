@@ -22,6 +22,9 @@ jobs:
       - name: Test pin.py
         run: python3 scripts/test_pin.py
 
+      - name: Test apply_blocks.py
+        run: python3 scripts/test_apply_blocks.py
+
       - name: Verify block markers and authoring rules
         run: python3 scripts/lint_blocks.py
 

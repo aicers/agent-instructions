@@ -1,0 +1,206 @@
+name: Apply shared instruction blocks
+
+# Reusable workflow. A consuming repository schedules it against itself:
+#
+#   name: Update shared instructions
+#   on:
+#     schedule: [{ cron: "0 6 * * 1" }]
+#     workflow_dispatch:
+#
+#   jobs:
+#     update:
+#       permissions:
+#         contents: write
+#         pull-requests: write
+#       uses: aicers/agent-instructions/.github/workflows/apply.yml@main
+#       with:
+#         blocks: "workflow rust changelog"
+#
+# It rewrites the caller's marked blocks from the latest release of
+# aicers/agent-instructions, moves the caller's drift-check pin to that
+# release, and opens one pull request. A caller already on the latest
+# release gets nothing.
+#
+# The direction matters. A workflow here that pushed into twelve
+# repositories would need a token with write access to all of them, which
+# this repository deliberately does not hold. Inverted, each caller needs
+# only its own GITHUB_TOKEN to open a pull request on itself. A caller
+# also stops being able to lag silently: the scheduled run proposes the
+# release whether or not anyone remembered.
+#
+# The organization setting "Allow GitHub Actions to create and approve
+# pull requests" has to be enabled, or the last step fails.
+#
+# No permissions block here. A called workflow can only narrow what the
+# caller granted, so restating them would add a way for this file to
+# conflict with a correct caller and nothing else.
+
+on:
+  workflow_call:
+    inputs:
+      blocks:
+        description: Space-separated block names to apply
+        required: true
+        type: string
+      target:
+        description: File in the caller repository holding the blocks
+        required: false
+        default: AGENTS.md
+        type: string
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the calling repository
+        uses: actions/checkout@v4
+
+      # Two checkouts, deliberately, for the reason check-drift.yml gives:
+      # the scripts are mechanism, like this workflow file, and come from
+      # the same place it does. The blocks are content and come from the
+      # release. Running the release's scripts instead would freeze the
+      # apply at whatever shipped alongside those blocks.
+      - name: Check out the apply
+        uses: actions/checkout@v4
+        with:
+          repository: aicers/agent-instructions
+          ref: main
+          path: .agent-instructions
+
+      # "Latest release", not "latest tag": a tag that was never released
+      # has not passed the release-surface guard, and the caller has no way
+      # to tell the two apart.
+      - name: Resolve the latest release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag=$(gh release view --repo aicers/agent-instructions \
+                  --json tagName --jq .tagName)
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "latest release is $tag"
+
+      - name: Check out the released blocks
+        uses: actions/checkout@v4
+        with:
+          repository: aicers/agent-instructions
+          ref: ${{ steps.release.outputs.tag }}
+          path: .agent-instructions-blocks
+
+      # Branch first, then apply on top of whatever the branch already
+      # carries. Applying to the default branch instead and force-pushing
+      # would rewrite the branch on every scheduled run while its pull
+      # request sat unmerged: the tree would be the same, the commit would
+      # not, and the caller would collect a notification a week for a pull
+      # request nobody had changed.
+      - name: Switch to the update branch
+        id: branch
+        run: |
+          set -euo pipefail
+          branch="shared-instructions/${{ steps.release.outputs.tag }}"
+          echo "name=$branch" >> "$GITHUB_OUTPUT"
+          # What the branch is measured against, recorded before leaving it.
+          echo "base=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          if git fetch --depth=1 origin "$branch" 2>/dev/null; then
+            echo "$branch exists; updating it"
+            git switch -c "$branch" FETCH_HEAD
+          else
+            git switch -c "$branch"
+          fi
+
+      - name: Apply the released blocks
+        env:
+          BLOCKS: ${{ inputs.blocks }}
+          TARGET: ${{ inputs.target }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          # BLOCKS is a space-separated list and is meant to split.
+          python3 .agent-instructions/scripts/apply_blocks.py \
+            --target "$TARGET" \
+            .agent-instructions-blocks/blocks . "$TAG" $BLOCKS
+
+      # Both checkouts sit inside the caller's working tree. Nothing below
+      # stages an untracked path, but leaving them there makes that a
+      # detail of how the commit is built rather than a fact about the
+      # tree.
+      - name: Remove the checkouts
+        run: rm -rf .agent-instructions .agent-instructions-blocks
+
+      - name: Commit and push the branch
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+          BRANCH: ${{ steps.branch.outputs.name }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "nothing to commit: this tree already matches $TAG"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # The message is built with printf rather than as a multi-line
+          # shell string, so the indentation that makes this file readable
+          # does not end up inside the commit. It wraps at 72.
+          printf '%s\n' \
+            "Update shared instruction blocks to $TAG" \
+            "" \
+            "Applied from aicers/agent-instructions at $TAG, which this" \
+            "repository's drift check is now pinned to. Do not edit the" \
+            "marked blocks here; change them upstream and cut a release." \
+            > "$RUNNER_TEMP/commit-message.txt"
+          git commit -q -a -F "$RUNNER_TEMP/commit-message.txt"
+          git push -q origin "HEAD:refs/heads/$BRANCH"
+          echo "pushed $(git rev-parse --short HEAD) to $BRANCH"
+
+      # A separate step from the commit, because the two can get out of
+      # step: a run that pushed the branch and then failed to open the
+      # request -- a disabled "Allow GitHub Actions to create and approve
+      # pull requests" is how that happens -- would otherwise leave every
+      # later run with nothing to commit and a branch nobody is looking at.
+      # So the request is checked for whenever the branch proposes
+      # anything, not only when this run is the one that wrote it.
+      - name: Open the pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BLOCKS: ${{ inputs.blocks }}
+          BRANCH: ${{ steps.branch.outputs.name }}
+          BASE: ${{ steps.branch.outputs.base }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+
+          if git diff --quiet "$BASE" HEAD; then
+            echo "already on $TAG; no pull request to open"
+            exit 0
+          fi
+
+          # Any state, not just open. An open one is already up to date --
+          # the push above did that. A closed one was somebody declining
+          # this release, and reopening it every Monday is not a review
+          # comment. A merged one means the work landed.
+          existing=$(gh pr list --head "$BRANCH" --state all \
+                       --json number,state \
+                       --jq '.[0] | select(.) | "#\(.number) (\(.state))"')
+          if [ -n "$existing" ]; then
+            echo "$BRANCH already has pull request $existing"
+            exit 0
+          fi
+
+          # The pull-request body is not wrapped: GitHub renders it as
+          # Markdown, so hard line breaks would show up in the rendering.
+          printf '%s\n' \
+            "Applied from \`aicers/agent-instructions\` at \`$TAG\` by its \`apply.yml\` reusable workflow, which also moved this repository's \`instructions-ref\` pin." \
+            "" \
+            "Blocks in this pull request: $BLOCKS" \
+            "" \
+            "The marked blocks are generated. Change the wording upstream in \`aicers/agent-instructions\` rather than editing it here — the drift check in CI will fail if this repository's copy diverges." \
+            > "$RUNNER_TEMP/pull-request-body.md"
+          gh pr create --head "$BRANCH" \
+            --title "Update shared instruction blocks to $TAG" \
+            --body-file "$RUNNER_TEMP/pull-request-body.md"

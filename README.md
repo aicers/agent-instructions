@@ -37,11 +37,19 @@ repos.json      which repository consumes which blocks
 scripts/
   render.py       apply, verify, list, or retire a block in one file
   pin.py          move a consumer's instructions-ref to a release tag
-  sync.sh         fan out blocks and pins as pull requests
+  apply_blocks.py bring one repository up to a release: apply, retire, pin
+  sync.sh         fan out apply_blocks.py to every repository at once
   lint_blocks.py  enforce the authoring rules in STYLE.md
-  test_*.py       tests for the two scripts consumers depend on
+  check_release_surface.sh  refuse a release with nothing in it
+  test_*.py       tests for the scripts consumers depend on
 STYLE.md        how to write a block
+CHANGELOG.md    what each release changed; also its release notes
 ```
+
+The two workflows under `.github/workflows/` that consumers call are
+`apply.yml`, which delivers a release, and `check-drift.yml`, which
+notices when a repository's copy stops matching the release it is pinned
+to.
 
 ## The consumer contract
 
@@ -94,53 +102,137 @@ lives in one dedicated module and leaves the repository to name it.
 ## Changing a block
 
 1. Edit the file in `blocks/`.
-2. Open a pull request here. CI lints the Markdown, tests the two
-   scripts consumers depend on, and checks the authoring rules.
-3. After it merges, tag the release. Consumers pin to tags, so an
+2. Add a `CHANGELOG.md` entry under the version you are about to cut.
+   The entry *is* the release notes, and `release.yml` refuses to
+   release a tag that has none.
+3. Open a pull request here. CI lints the Markdown, tests the scripts
+   consumers depend on, and checks the authoring rules.
+4. After it merges, tag the release. Consumers pin to release tags, so an
    untagged change reaches nobody:
 
    ```sh
-   git tag v2 && git push origin v2
+   git tag 1.1.0 && git push origin 1.1.0
    ```
 
-4. Fan it out:
+   `release.yml` turns the tag into a GitHub Release with those notes. It
+   first refuses a tag whose `blocks/` tree is byte-identical to the
+   previous release's, since that release would give every consumer a
+   pull request that moves a pin and changes no rule.
+5. Wait. Each consumer applies the release to itself on a schedule and
+   opens its own pull request; review and merge those.
 
-   ```sh
-   scripts/sync.sh v2
-   ```
+## Version scheme
 
-   This clones each consuming repository, rewrites the marked regions,
-   drops any block the repository no longer takes, sets the drift
-   check's `blocks` and `instructions-ref` inputs to match, and opens
-   one pull request per repository under
-   `<github-username>/instructions-v2`.
-   Repositories already current are skipped, and a tag that is not on
-   `origin` is refused before anything is touched.
+`MAJOR.MINOR.PATCH`, no `v` prefix. The grade is defined by the review a
+release demands, not by build compatibility — blocks are prose, and
+nothing downstream compiles:
 
-   Nothing here holds cross-repository permissions. The script runs on
-   your workstation with your own `gh` credentials — there is no bot
-   account and no organization token. Pass `--dry-run` first to see the
-   diff each pull request would carry:
+- **MAJOR** — an existing rule is reversed or removed. Consumers have to
+  check whether their code already violates the new rule.
+- **MINOR** — a rule is added. It applies going forward and does not
+  retroactively invalidate existing code.
+- **PATCH** — wording or structure only; the rule set is unchanged.
 
-   ```sh
-   scripts/sync.sh --dry-run v2
-   ```
+A PATCH can still change how an agent behaves; prompt text is not CSS.
+The grade says how hard to look, nothing more.
 
-5. Review and merge the generated pull requests.
+The monotonic `v1` and `v2` tags predate this scheme and are kept. They
+go inert as soon as the last repository pinned to one moves to a semver
+pin, but a tag costs nothing, and deleting one retroactively breaks any
+branch still pinned to it.
+
+## How a release reaches a repository
+
+Each consuming repository pulls, on its own schedule, with its own
+`GITHUB_TOKEN`:
+
+```yaml
+name: Update shared instructions
+on:
+  schedule: [{ cron: "0 6 * * 1" }]
+  workflow_dispatch:
+
+jobs:
+  update:
+    permissions:
+      contents: write
+      pull-requests: write
+    uses: aicers/agent-instructions/.github/workflows/apply.yml@main
+    with:
+      blocks: "workflow rust changelog"
+```
+
+The workflow resolves the latest release, rewrites the marked regions,
+drops any block the repository no longer lists, sets the drift check's
+`blocks` and `instructions-ref` inputs to match, and opens one pull
+request on `shared-instructions/<release>`. A repository already on the
+latest release gets none, and a second run against an unchanged
+repository neither opens a pull request nor rewrites the branch behind an
+open one.
+
+The organization setting *Allow GitHub Actions to create and approve pull
+requests* has to be enabled, or the pull-request step fails.
+
+`workflow_dispatch` is in the caller for a reason: GitHub disables a
+scheduled workflow in a repository with 60 days of no activity, and does
+so quietly, so a dormant repository can stop pulling with nothing to show
+for it.
+
+Pulling rather than pushing is the whole point. A workflow here that
+pushed into twelve repositories would need a token with write access to
+all twelve, which this repository deliberately does not hold; inverted,
+each consumer needs only a token for itself. And a consumer can no longer
+lag silently — the schedule proposes the release whether or not anyone
+remembered.
+
+## The urgent path
+
+`scripts/sync.sh` is the same apply, driven from a maintainer's
+workstation against every repository at once. Reach for it when a release
+should not wait for the next scheduled run — withdrawing a rule, say — or
+to update a repository that has not been onboarded to the scheduled job
+yet:
+
+```sh
+scripts/sync.sh 1.1.0
+```
+
+This clones each consuming repository, runs `scripts/apply_blocks.py`
+against it — the same script `apply.yml` runs, which is why the two
+cannot disagree — and opens one pull request per repository under
+`<github-username>/instructions-1.1.0`. Repositories already current are
+skipped, and a tag that is not on `origin` is refused before anything is
+touched.
+
+It holds no cross-repository permissions either: it runs with your own
+`gh` credentials, and there is no bot account and no organization token.
+Pass `--dry-run` first to see the diff each pull request would carry:
+
+```sh
+scripts/sync.sh --dry-run 1.1.0
+```
 
 Limiting the fan-out to specific repositories is allowed:
 
 ```sh
-scripts/sync.sh v2 bootroot roxyd
+scripts/sync.sh 1.1.0 bootroot roxyd
 ```
 
 ## Retiring a block
 
-Drop it from `repos.json` and delete the file. `sync.sh` then removes the
-region from every repository that carried it, because a retired block is
-otherwise the one thing nothing looks at: no file renders it, and the
-drift check only compares the blocks a repository still lists. A stale
-copy of a rule would sit beside its replacement indefinitely.
+Drop it from `repos.json` and delete the file. Either driver then removes
+the region from every repository that carried it, because a retired block
+is otherwise the one thing nothing looks at: no file renders it, and the
+drift check only compares the blocks a repository still lists. A stale copy
+of a rule would sit beside its replacement indefinitely.
+
+A consumer's own `blocks` input still names the retired block at that
+point, and nothing upstream can edit it. `apply_blocks.py` therefore treats
+a listed block the release does not carry as retired rather than as an
+error: it drops the region and drops the name from the drift check's
+`blocks` input, which is what stops that check looking for a file the
+release does not have. The calling workflow's copy of the list is left for
+whoever maintains that repository to tidy; a stale name there is inert.
 
 The drift check compares the other direction too, and fails on a marker
 the repository no longer lists — so a retirement that never reached a
@@ -156,18 +248,18 @@ jobs:
     uses: aicers/agent-instructions/.github/workflows/check-drift.yml@main
     with:
       blocks: "workflow rust changelog"
-      instructions-ref: v2
+      instructions-ref: 1.0.0
 ```
 
 It fails when a repository's copy differs from this repository at
 `instructions-ref` — whether because someone edited a generated region
-locally, or because a sync pull request was never merged.
+locally, or because an update pull request was never merged.
 
 `instructions-ref` is a release tag, and it is required. Comparing
 against a branch would make every upstream edit turn ten repositories
 red at once, including pull requests that have nothing to do with the
 instructions, which is how a check gets ignored. Pinned, an edit here
-reaches a repository only through its sync pull request.
+reaches a repository only through the pull request that moves the pin.
 
 That pin is also the answer to "which release is this repository on",
 and the only one. It is deliberately not repeated in a comment, nor in a
@@ -204,7 +296,13 @@ repository public is the simpler option, since it holds no secrets.
    not interfere with the import, which was measured rather than
    assumed.
 4. Add the drift-check job to its CI, including an `instructions-ref`
-   pin. `sync.sh` refuses a repository that consumes blocks without
-   one, rather than leaving it floating.
-5. Run `scripts/sync.sh <tag> <repo>` to fill the regions and set the
-   pin.
+   pin. Both drivers refuse a repository that consumes blocks without
+   one, rather than leaving it floating. Any existing release tag will do
+   as the initial value — the first apply moves it — but it has to be one
+   that resolves, since the check itself checks that ref out.
+5. Add the calling workflow from [How a release reaches a
+   repository](#how-a-release-reaches-a-repository), so the repository
+   pulls every release from then on.
+6. Run `scripts/sync.sh <tag> <repo>` to fill the regions and set the
+   pin now, rather than waiting for the first scheduled run. Running the
+   caller's `workflow_dispatch` does the same thing from the other side.

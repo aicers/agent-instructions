@@ -22,9 +22,10 @@
 - Branch names must follow the format `<github-username>/issue-#` (e.g.,
   `alice/issue-42`). If there is no related issue, ask the user how to
   proceed before creating the branch.
-- The sole exception is a branch carrying a synced update to the shared
-  blocks below, which uses `<github-username>/instructions-<label>` and
-  needs no issue.
+- The sole exception is a branch carrying an update to the shared blocks
+  below, which needs no issue. CI opens it as
+  `shared-instructions/<release>`; a maintainer running the fan-out by
+  hand opens it as `<github-username>/instructions-<release>`.
 
 ## GitHub issues and PRs
 
