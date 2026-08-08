@@ -7,8 +7,9 @@ Applies each named block into `<repo-root>/<target>`, drops any block the
 repository carries that the release no longer has or the caller no longer
 names, and moves its drift-check pin to `<tag>`. It writes
 `<repo-root>/<target>` and the workflow files under `<repo-root>`, and
-nothing else — whether that tree is a throwaway clone or the checkout the
-caller is standing in is the driver's business.
+nothing else — a `--target` that resolves outside the repository is
+refused rather than followed. Whether that tree is a throwaway clone or
+the checkout the caller is standing in is the driver's business.
 
 Two drivers need exactly this sequence: `sync.sh`, which a maintainer
 runs against every repository at once, and `apply.yml`, which a consumer
@@ -72,7 +73,20 @@ def main() -> int:
         print("name at least one block to apply", file=sys.stderr)
         return 1
 
-    target = args.root / args.target
+    # `--target` is a caller input in apply.yml, and this script is
+    # documented to write nothing outside `<repo-root>`. An absolute value
+    # discards the root entirely, a relative one can climb out of it, and a
+    # symlink inside the tree can point anywhere -- so resolve both sides,
+    # which follows links, and refuse a target that lands elsewhere. Not a
+    # privilege boundary: a consumer already owns the runner it schedules
+    # this on. It is the difference between a mistyped input failing on the
+    # step that read it and it quietly rewriting a file nothing here should
+    # touch.
+    root = args.root.resolve()
+    target = (root / args.target).resolve()
+    if not target.is_relative_to(root):
+        print(f"{args.target}: outside {args.root}", file=sys.stderr)
+        return 1
     if not target.is_file():
         print(f"{target}: no such file", file=sys.stderr)
         return 1

@@ -97,13 +97,19 @@ def consumer(root: Path, agents: str = AGENTS, workflow: str | None = WORKFLOW) 
     return root
 
 
-def run(blocks: Path, root: Path, tag: str, *names: str) -> subprocess.CompletedProcess:
+def run(
+    blocks: Path,
+    root: Path,
+    tag: str,
+    *names: str,
+    target: str = "AGENTS.md",
+) -> subprocess.CompletedProcess:
     return subprocess.run(
         [
             sys.executable,
             str(APPLY),
             "--target",
-            "AGENTS.md",
+            target,
             str(blocks),
             str(root),
             tag,
@@ -229,6 +235,40 @@ def main() -> int:
             "no shared:other block" in result.stderr
             and "add the markers first" in result.stderr,
             "names the missing pair rather than the block that applied",
+        )
+
+        # `target` is a caller input in apply.yml and reaches the script
+        # unexamined, so a mistyped one must fail on the step that read it
+        # rather than rewrite a file outside the repository being applied
+        # to. All three shapes are refused before the pin moves, so the
+        # repository itself is left alone too.
+        print("a target outside the repository")
+        outside = tmp / "outside"
+        outside.mkdir()
+        bystander = outside / "AGENTS.md"
+        bystander.write_text(AGENTS, encoding="utf-8")
+        escape = consumer(tmp / "escape")
+        link = escape / "LINKED.md"
+        link.symlink_to(bystander)
+        for description, value in (
+            ("an absolute target", str(bystander)),
+            ("a relative target that climbs out", "../outside/AGENTS.md"),
+            ("a symlink pointing out of the tree", "LINKED.md"),
+        ):
+            result = run(blocks, escape, "1.0.0", "demo", "other", target=value)
+            check(result.returncode != 0, f"{description} exits non-zero")
+            check(
+                "outside" in result.stderr,
+                f"{description} says why",
+            )
+        check(
+            bystander.read_text(encoding="utf-8") == AGENTS,
+            "the file outside is untouched",
+        )
+        check(
+            "instructions-ref: 0.9.0"
+            in (escape / ".github/workflows/ci.yml").read_text(encoding="utf-8"),
+            "the repository's own pin never moved",
         )
 
         print("a repository with no target file")

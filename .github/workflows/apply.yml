@@ -64,7 +64,9 @@ on:
         required: true
         type: string
       target:
-        description: File in the caller repository holding the blocks
+        description: >
+          File in the caller repository holding the blocks. Must resolve
+          inside that repository; one that does not is refused.
         required: false
         default: AGENTS.md
         type: string
