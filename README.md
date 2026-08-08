@@ -278,6 +278,12 @@ cannot disagree — and opens one pull request per repository under
 skipped, and a tag that is not on `origin` is refused before anything is
 touched.
 
+What gets applied is the tag's own tree, fetched from `origin`: its
+`blocks/` and its `repos.json`, not the ones in your working checkout.
+Those two are rarely the same — the tag was cut somewhere in `main`'s
+past — and applying the checkout while pinning the tag would open pull
+requests that fail their drift check on merge.
+
 It holds no cross-repository permissions either: it runs with your own
 `gh` credentials, and there is no bot account and no organization token.
 Pass `--dry-run` first to see the diff each pull request would carry:

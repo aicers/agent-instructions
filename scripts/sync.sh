@@ -18,6 +18,10 @@
 # <github-username>/instructions-<tag>. Pass repository names to limit
 # the fan-out; the default is every repository in repos.json.
 #
+# What is applied is that tag's tree, fetched from origin — its blocks/
+# and its repos.json — not this checkout's, which is normally ahead of
+# the tag being synced.
+#
 # --dry-run clones and renders, then prints the diff each pull request
 # would carry, without branching, committing, or pushing anything.
 #
@@ -51,7 +55,30 @@ if ! git -C "$root" ls-remote --exit-code --tags origin \
   exit 2
 fi
 
-config=$root/repos.json
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+
+# What gets applied is the release, not this checkout. The two are rarely
+# the same tree: the tag was cut somewhere in main's past and whoever runs
+# this is standing on main. Applying what happens to be checked out here
+# while writing $label into every consumer's pin file would open pull
+# requests that are wrong the moment they merge — the pin naming one
+# release and the blocks beside it coming from another, which the next
+# drift check reports as the consumer's divergence. So materialize the tag
+# and hand that to apply_blocks.py.
+#
+# The driver stays this checkout's: you run the sync.sh you have. It is
+# the release payload that has to be the release.
+release=$work/release
+mkdir -p "$release"
+git -C "$root" fetch --quiet --no-tags origin "refs/tags/$label"
+git -C "$root" archive FETCH_HEAD | tar -xf - -C "$release"
+
+# repos.json comes from the release for the same reason, and it is the
+# copy apply_blocks.py reads. Resolving the fan-out from a different one
+# would let this loop admit a repository the apply then refuses, aborting
+# a fan-out that has already opened pull requests.
+config=$release/repos.json
 query() { python3 -c "$1" "$config" "${2:-}"; }
 
 org=$(query 'import json,sys; print(json.load(open(sys.argv[1]))["org"])')
@@ -66,9 +93,6 @@ fi
 
 user=$(gh api user --jq .login)
 branch="$user/instructions-$label"
-
-work=$(mktemp -d)
-trap 'rm -rf "$work"' EXIT
 
 opened=0
 skipped=0
@@ -86,35 +110,38 @@ sys.exit(0 if sys.argv[2] in json.load(open(sys.argv[1]))["repos"] else 1)' \
   fi
 
   echo "==> $org/$repo"
-  gh repo clone "$org/$repo" "$work/$repo" -- --depth=1 --quiet
+  # Under $work/repos/ rather than $work/ directly, so that a repository
+  # named like the release directory cannot land on top of it.
+  clone=$work/repos/$repo
+  gh repo clone "$org/$repo" "$clone" -- --depth=1 --quiet
 
   # Applying the blocks, retiring the ones repos.json dropped, and moving
   # the pin is one sequence, and `apply.yml` needs the same one. It lives
   # in apply_blocks.py so the two drivers cannot disagree.
   python3 "$root/scripts/apply_blocks.py" \
-    "$root" "$work/$repo" "$repo" "$label"
+    "$release" "$clone" "$repo" "$label"
 
-  blocks=$(python3 "$root/scripts/pin_file.py" read "$work/$repo" blocks)
+  blocks=$(python3 "$root/scripts/pin_file.py" read "$clone" blocks)
 
-  if git -C "$work/$repo" diff --quiet; then
+  if git -C "$clone" diff --quiet; then
     echo "    already current, no pull request"
     skipped=$((skipped + 1))
     continue
   fi
 
   if $dry_run; then
-    git -C "$work/$repo" --no-pager diff --stat
+    git -C "$clone" --no-pager diff --stat
     opened=$((opened + 1))
     continue
   fi
 
-  git -C "$work/$repo" switch -c "$branch" --quiet
-  git -C "$work/$repo" commit -aqm "Update shared instruction blocks to $label
+  git -C "$clone" switch -c "$branch" --quiet
+  git -C "$clone" commit -aqm "Update shared instruction blocks to $label
 
 Synced from $org/agent-instructions at $label, which the drift check is
 now pinned to. Do not edit the marked blocks in this repository; change
 them upstream, tag a release, and re-run the sync."
-  git -C "$work/$repo" push -q -u origin HEAD
+  git -C "$clone" push -q -u origin HEAD
 
   gh pr create -R "$org/$repo" \
     --head "$branch" \

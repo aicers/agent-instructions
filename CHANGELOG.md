@@ -66,4 +66,8 @@ contract has never run in a consumer once.
   by CI. It named `<github-username>/instructions-<label>` only, which
   assumed a person had run the sync.
 - `sync.sh` is the urgent path rather than the only one: reach for it when
-  a release should not wait for the next scheduled run.
+  a release should not wait for the next scheduled run. It now applies the
+  tag's own `blocks/` and `repos.json`, fetched from `origin`, rather than
+  the working checkout it is run from — which is normally ahead of the tag
+  and would leave every pull request pinned to one release and filled from
+  another. `scripts/test_sync.py` covers it.
