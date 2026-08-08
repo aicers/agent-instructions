@@ -15,6 +15,8 @@ name: Apply shared instruction blocks
 #       uses: aicers/agent-instructions/.github/workflows/apply.yml@main
 #       with:
 #         blocks: "workflow rust changelog"
+#       secrets:
+#         token: ${{ secrets.INSTRUCTIONS_TOKEN }}
 #
 # It rewrites the caller's marked blocks from the latest release of
 # aicers/agent-instructions, moves the caller's drift-check pin to that
@@ -23,20 +25,32 @@ name: Apply shared instruction blocks
 #
 # The direction matters. A workflow here that pushed into twelve
 # repositories would need a token with write access to all of them, which
-# this repository deliberately does not hold. Inverted, each caller needs
-# only its own GITHUB_TOKEN to open a pull request on itself. A caller
-# also stops being able to lag silently: the scheduled run proposes the
-# release whether or not anyone remembered.
+# this repository deliberately does not hold. Inverted, each caller pushes
+# only to itself, with a credential it holds itself and this repository
+# never sees. A caller also stops being able to lag silently: the
+# scheduled run proposes the release whether or not anyone remembered.
+#
+# `token` is why the caller needs a credential at all rather than only its
+# default GITHUB_TOKEN. Moving the drift-check pin means rewriting
+# `instructions-ref` in the caller's own workflow file, and GitHub refuses
+# a push that touches `.github/workflows/` when it is authenticated as the
+# GitHub Actions app -- "refusing to allow a GitHub App to create or
+# update workflow ... without `workflows` permission". No `permissions:`
+# grant fixes it: the workflow permission set has no `workflows` scope at
+# all. So the caller supplies a fine-grained personal access token, or a
+# GitHub App installation token, with Contents, Pull requests, and
+# Workflows write on itself. Left unset, the job still runs and still
+# fails, but with a step that says this rather than with a rejected ref.
 #
 # The organization setting "Allow GitHub Actions to create and approve
-# pull requests" has to be enabled, or the last step fails.
+# pull requests" has to be enabled when `token` is a GitHub App
+# installation token, or the last step fails. A personal access token
+# opens the pull request as its own user and is not covered by it.
 #
-# The pull request arrives with no checks on it: GitHub starts no workflow
-# run for anything a GITHUB_TOKEN did, so the caller's own CI -- its drift
-# check included -- does not fire on the branch or on the request. Closing
-# and reopening the request starts them. Firing them directly would mean
-# the caller holding a bot or app credential rather than only the token it
-# already has, which is the trade this workflow exists to avoid.
+# A pull request opened with `token` carries checks, since the events came
+# from that credential rather than from GITHUB_TOKEN, which triggers no
+# workflow runs. That includes the caller's own drift check, which is the
+# one that has an opinion about what this job just wrote.
 #
 # No permissions block here. A called workflow can only narrow what the
 # caller granted, so restating them would add a way for this file to
@@ -54,13 +68,25 @@ on:
         required: false
         default: AGENTS.md
         type: string
+    secrets:
+      token:
+        description: >
+          Token with Contents, Pull requests, and Workflows write on the
+          calling repository, used to push the branch and open the pull
+          request. Needed because the drift-check pin lives in a workflow
+          file and GITHUB_TOKEN may not push one.
+        required: false
 
 jobs:
   apply:
     runs-on: ubuntu-latest
     steps:
+      # `token` rather than the default GITHUB_TOKEN, because checkout is
+      # also what leaves credentials behind for the push below.
       - name: Check out the calling repository
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.token || github.token }}
 
       # Two checkouts, deliberately, for the reason check-drift.yml gives:
       # the scripts are mechanism, like this workflow file, and come from
@@ -141,12 +167,31 @@ jobs:
         env:
           TAG: ${{ steps.release.outputs.tag }}
           BRANCH: ${{ steps.branch.outputs.name }}
+          HAS_TOKEN: ${{ secrets.token != '' }}
         run: |
           set -euo pipefail
 
           if [ -z "$(git status --porcelain)" ]; then
             echo "nothing to commit: this tree already matches $TAG"
             exit 0
+          fi
+
+          # The pin lives in a workflow file, and a push carrying one is
+          # rejected when the credential is GITHUB_TOKEN. Nothing has been
+          # pushed yet at this point, so say what is wrong here rather than
+          # letting git report it as a rejected ref eight lines later.
+          if [ "$HAS_TOKEN" != true ] &&
+             git status --porcelain -- .github/workflows | grep -q .; then
+            echo "::error::This release moves the drift-check pin in" \
+                 ".github/workflows, and GitHub refuses a push touching" \
+                 "that directory when it is authenticated with the default" \
+                 "GITHUB_TOKEN. Pass a fine-grained personal access token" \
+                 "or GitHub App installation token with Contents, Pull" \
+                 "requests, and Workflows write on this repository, as" \
+                 "'secrets: {token: ...}' on the job that calls this" \
+                 "workflow. No 'permissions:' grant is an alternative:" \
+                 "there is no 'workflows' scope for a workflow to request."
+            exit 1
           fi
 
           git config user.name "github-actions[bot]"
@@ -176,7 +221,9 @@ jobs:
       # anything, not only when this run is the one that wrote it.
       - name: Open the pull request
         env:
-          GH_TOKEN: ${{ github.token }}
+          # The same credential that pushed the branch, so the request is
+          # opened by whoever owns it and its checks run.
+          GH_TOKEN: ${{ secrets.token || github.token }}
           BLOCKS: ${{ inputs.blocks }}
           BRANCH: ${{ steps.branch.outputs.name }}
           BASE: ${{ steps.branch.outputs.base }}

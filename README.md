@@ -143,8 +143,8 @@ branch still pinned to it.
 
 ## How a release reaches a repository
 
-Each consuming repository pulls, on its own schedule, with its own
-`GITHUB_TOKEN`:
+Each consuming repository pulls, on its own schedule, with a credential
+of its own:
 
 ```yaml
 name: Update shared instructions
@@ -160,6 +160,8 @@ jobs:
     uses: aicers/agent-instructions/.github/workflows/apply.yml@main
     with:
       blocks: "workflow rust changelog"
+    secrets:
+      token: ${{ secrets.INSTRUCTIONS_TOKEN }}
 ```
 
 The workflow resolves the latest release, rewrites the marked regions,
@@ -170,16 +172,27 @@ latest release gets none, and a second run against an unchanged
 repository neither opens a pull request nor rewrites the branch behind an
 open one.
 
-The organization setting *Allow GitHub Actions to create and approve pull
-requests* has to be enabled, or the pull-request step fails.
+`INSTRUCTIONS_TOKEN` is a fine-grained personal access token, or a GitHub
+App installation token, with Contents, Pull requests, and Workflows write
+on that repository alone. It is not optional in practice, and the reason
+is the pin: moving `instructions-ref` means rewriting the repository's own
+workflow file, and GitHub rejects a push touching `.github/workflows/`
+when it is authenticated as the Actions app — *refusing to allow a GitHub
+App to create or update workflow ... without `workflows` permission*.
+There is no `permissions:` grant that fixes this; the workflow permission
+set has no `workflows` scope to request. Called without the secret, the
+job fails on a step that says so rather than on a rejected ref. `sync.sh`
+never hit this because `gh` logs in with the `workflow` scope.
 
-That pull request arrives with no checks on it. GitHub starts no workflow
-run for anything a `GITHUB_TOKEN` did, so neither the branch push nor the
-pull request triggers the repository's own CI — its drift check included.
-Close and reopen the pull request to start them, or push any commit to the
-branch. This is the cost of the caller holding nothing but its own default
-token; a bot account or an app installation would fire CI, and would be a
-credential to manage in exchange.
+The organization setting *Allow GitHub Actions to create and approve pull
+requests* has to be enabled if that token is a GitHub App installation
+token. A personal access token opens the pull request as its own user and
+is not covered by the setting.
+
+The pull request arrives with checks on it, including the drift check that
+has an opinion about what the job just wrote — because the push came from
+that token rather than from `GITHUB_TOKEN`, which triggers no workflow
+runs at all.
 
 `workflow_dispatch` is in the caller for a reason: GitHub disables a
 scheduled workflow in a repository with 60 days of no activity, and does
@@ -187,11 +200,11 @@ so quietly, so a dormant repository can stop pulling with nothing to show
 for it.
 
 Pulling rather than pushing is the whole point. A workflow here that
-pushed into twelve repositories would need a token with write access to
+pushed into twelve repositories would need one token with write access to
 all twelve, which this repository deliberately does not hold; inverted,
-each consumer needs only a token for itself. And a consumer can no longer
-lag silently — the schedule proposes the release whether or not anyone
-remembered.
+each consumer holds a token for itself and nothing here can write to any
+of them. And a consumer can no longer lag silently — the schedule proposes
+the release whether or not anyone remembered.
 
 ## The urgent path
 
@@ -286,8 +299,10 @@ Both reusable workflows read this repository with the caller's own
 default `GITHUB_TOKEN` — the checkouts in either, and `apply.yml`'s
 lookup of the latest release. That token cannot read a private
 repository, and neither workflow takes an input to hand it a different
-one, so this repository is public. It holds no secrets, which is what
-makes that the simpler answer rather than a compromise.
+one for reading here — `apply.yml`'s `token` secret is spent on the
+caller's own repository — so this repository is public. It holds no
+secrets, which is what makes that the simpler answer rather than a
+compromise.
 
 ## Onboarding a repository
 
@@ -313,7 +328,11 @@ makes that the simpler answer rather than a compromise.
    that resolves, since the check itself checks that ref out.
 5. Add the calling workflow from [How a release reaches a
    repository](#how-a-release-reaches-a-repository), so the repository
-   pulls every release from then on.
+   pulls every release from then on, and add the `INSTRUCTIONS_TOKEN`
+   secret it passes. The token is scoped to this repository alone and
+   needs Contents, Pull requests, and Workflows write; without Workflows
+   write the job cannot move the pin, which lives in the workflow file it
+   just added.
 6. Run `scripts/sync.sh <tag> <repo>` to fill the regions and set the
    pin now, rather than waiting for the first scheduled run. Running the
    caller's `workflow_dispatch` does the same thing from the other side.

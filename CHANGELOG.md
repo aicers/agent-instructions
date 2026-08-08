@@ -30,7 +30,9 @@ is tagged that way.
   release, rewrites its marked blocks, moves its drift-check pin, and
   opens one pull request. A repository already on the latest release gets
   none. This repository holds no cross-repository credentials, and now
-  does not need any for a release to arrive.
+  does not need any for a release to arrive; the caller passes a `token`
+  secret scoped to itself, which it needs because moving the pin rewrites
+  its own workflow file and `GITHUB_TOKEN` may not push one.
 - `scripts/apply_blocks.py` holds the per-repository sequence — apply,
   retire, pin — that `sync.sh` used to spell out inline, so the two
   drivers cannot drift apart. `scripts/test_apply_blocks.py` covers it.
