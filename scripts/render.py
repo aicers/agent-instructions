@@ -3,9 +3,14 @@
 
 A block is delimited in the target file by
 
-    <!-- BEGIN shared:<name> v<N> -->
+    <!-- BEGIN shared:<name> -->
     ...
     <!-- END shared:<name> -->
+
+A BEGIN marker still carrying the `v<N>` that markers used to have is
+matched too, and `apply` replaces it with the current form. Repositories
+onboarded before the version was dropped still have them, and nothing
+upstream can edit a consumer's file except through this script.
 
 `apply` replaces everything between (and including) the markers with the
 current contents of the block file. `check` reports drift without writing.

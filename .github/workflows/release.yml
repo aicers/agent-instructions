@@ -1,0 +1,83 @@
+name: Release
+
+# A GitHub Release is what apply.yml resolves when it asks for "the
+# latest release", so a tag that never becomes one reaches nobody. This
+# workflow turns a MAJOR.MINOR.PATCH tag into that release, with the notes
+# taken from CHANGELOG.md.
+#
+# The old monotonic v1 and v2 tags do not match the pattern and are left
+# alone.
+
+on:
+  push:
+    tags:
+      - "[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The surface guard reads the previous release's blocks/ tree, so
+          # it needs the history and the tags. actions/checkout is shallow
+          # and tagless by default, which would let the guard pass while
+          # comparing against nothing.
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Read the version from the tag
+        id: version
+        run: echo "version=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+
+      # Before the release exists, not after: a release with nothing in it
+      # is already in every consumer's inbox by the time anyone looks.
+      - name: Guard the release surface
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: scripts/check_release_surface.sh "$VERSION"
+
+      # The changelog entry is the release notes. A missing entry fails the
+      # release rather than falling back to a generated line: notes reading
+      # "Release 1.2.0" tell a consumer nothing, and the pull request they
+      # are about to review is generated too.
+      - name: Extract the release notes
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' > notes.md
+          import os, re, sys
+          version = os.environ["VERSION"]
+          heading = re.compile(rf"^## \[?{re.escape(version)}\]?(\s|$)")
+          taking, notes = False, []
+          for line in open("CHANGELOG.md", encoding="utf-8").read().splitlines():
+              if taking and line.startswith("## "):
+                  break
+              if taking:
+                  notes.append(line)
+              elif heading.match(line):
+                  taking = True
+          body = "\n".join(notes).strip("\n")
+          if not body:
+              sys.exit(
+                  f"CHANGELOG.md has no entry for {version}, or an empty one."
+                  " Add it and re-tag."
+              )
+          print(body)
+          PY
+          cat notes.md
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          gh release create "$VERSION" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$VERSION" \
+            --notes-file notes.md

@@ -6,8 +6,8 @@ name: Shared instruction-block drift
 #     instructions:
 #       uses: aicers/agent-instructions/.github/workflows/check-drift.yml@main
 #       with:
-#         blocks: "workflow rust rust-tls"
-#         instructions-ref: v1
+#         blocks: "workflow rust changelog"
+#         instructions-ref: 1.0.0
 #
 # It fails when the marked blocks in the caller's AGENTS.md differ from
 # the blocks in aicers/agent-instructions at instructions-ref.
@@ -17,7 +17,7 @@ name: Shared instruction-block drift
 # edit into a red build in ten repositories at once, including pull
 # requests that have nothing to do with the instructions — which trains
 # everyone to ignore this check. Pinned, an upstream edit reaches a
-# repository only through its sync pull request, which moves the pin.
+# repository only through the pull request that moves the pin.
 #
 # The pin is also the record of which release a repository carries. It
 # is not duplicated in a comment anywhere: this input decides what the
@@ -82,8 +82,9 @@ jobs:
           done
           if [ "$status" -ne 0 ]; then
             echo "::error::AGENTS.md is out of date with aicers/agent-instructions."
-            echo "Do not edit the marked blocks here. Change them upstream,"
-            echo "then run scripts/sync.sh in aicers/agent-instructions."
+            echo "Do not edit the marked blocks here. Change them upstream and"
+            echo "cut a release; this repository's scheduled apply.yml job then"
+            echo "opens the pull request that updates this copy."
           fi
           exit "$status"
 
