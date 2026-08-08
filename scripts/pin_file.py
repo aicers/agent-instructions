@@ -66,9 +66,15 @@ def path_in(root: Path) -> Path:
 
 
 def dump(ref: str, blocks: list[str]) -> str:
-    # Names come from repos.json, which CI checks against `blocks/`, so a
-    # name that would need escaping is a bug upstream rather than input to
-    # handle. Refuse it instead of emitting a file the reader cannot read.
+    # Both values have to survive the reader below, which holds them to one
+    # word each. Refuse the rest here rather than emitting a file this tool
+    # cannot read back: the tag names a release and the names come from a
+    # repos.json this repository controls, so either is a fault where the
+    # write was asked for. Caught here it says so; caught by the reader a
+    # step later it names the consumer's file, which was just rewritten and
+    # is the one thing not at fault.
+    if not NAME.fullmatch(ref):
+        raise PinError(f"{ref!r} is not a usable release tag")
     for block in blocks:
         if not NAME.fullmatch(block):
             raise PinError(f"{block!r} is not a usable block name")

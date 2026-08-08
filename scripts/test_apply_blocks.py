@@ -21,6 +21,11 @@ import sys
 import tempfile
 from pathlib import Path
 
+try:
+    import tomllib
+except ModuleNotFoundError:  # tomllib arrived in 3.11
+    tomllib = None
+
 SCRIPTS = Path(__file__).resolve().parent
 APPLY = SCRIPTS / "apply_blocks.py"
 PIN_FILE = SCRIPTS / "pin_file.py"
@@ -197,6 +202,21 @@ def main() -> int:
             read(root, "blocks").stdout == "demo other\n",
             "prints one field on its own when asked for it",
         )
+
+        # `pin_file.py` emits the file by hand and reads it back with a
+        # regex over two keys of known shape, which is what spares every
+        # consumer's runner a TOML dependency. It is still a `.toml`, so
+        # anything else opening it will use a real parser -- and that has to
+        # find the same two keys.
+        print("parsing what was written as TOML")
+        if tomllib is None:
+            print("  skip this runner is older than Python 3.11")
+        else:
+            check(
+                tomllib.loads(pin_of(root))
+                == {"ref": "0.2.0", "blocks": ["demo", "other"]},
+                "a real parser reads the same two keys",
+            )
 
         print("re-running against the result")
         before = (agents, pin_of(root))
@@ -448,19 +468,24 @@ blocks = [
             check(result.returncode != 0, f"{description} exits non-zero")
             check(says in result.stderr, f"{description} says what is missing")
 
-        # The written file has to be readable by the reader above and by a
-        # real TOML parser, and a name needing an escape would be neither.
-        # It can only come from a repos.json this repository controls, so
-        # it is refused rather than quoted.
-        print("writing a block name the format cannot carry")
-        odd = consumer(tmp / "odd")
-        result = subprocess.run(
-            [sys.executable, str(PIN_FILE), "write", str(odd), "0.2.0", 'a"b'],
-            capture_output=True,
-            text=True,
-        )
-        check(result.returncode != 0, "exits non-zero")
-        check(pin_of(odd) == PIN, "the file is left as it was")
+        # Neither value can be anything the reader above would refuse, or
+        # the apply would rewrite a consumer's file and then fail reading
+        # back what it had just written -- blaming that file rather than
+        # the tag or the repos.json entry that is actually wrong.
+        print("writing what the reader would refuse")
+        for description, tag, block in (
+            ("a block name needing an escape", "0.2.0", 'a"b'),
+            ("a release tag that is not one word", "0.2 beta", "demo"),
+        ):
+            slug = description.replace(" ", "-")
+            odd = consumer(tmp / f"odd-{slug}")
+            result = subprocess.run(
+                [sys.executable, str(PIN_FILE), "write", str(odd), tag, block],
+                capture_output=True,
+                text=True,
+            )
+            check(result.returncode != 0, f"{description} exits non-zero")
+            check(pin_of(odd) == PIN, f"{description} writes nothing")
 
     print()
     if failures:
