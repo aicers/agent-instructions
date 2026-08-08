@@ -39,15 +39,17 @@ The first and last lines are the markers, and the name must match the
 filename:
 
 ```text
-<!-- BEGIN shared:rust v1 -->
+<!-- BEGIN shared:rust -->
 ...
 <!-- END shared:rust -->
 ```
 
-The version lives on the BEGIN marker only, so a consuming repository can
-be inspected at a glance to see which revision it carries. Versions are
-per block: bumping `rust` does not disturb repositories that only consume
-`workflow`.
+The markers carry no version. Which release a repository is on is the
+`instructions-ref` pin beside its drift check, and whether the blocks it
+carries match that release is what the drift check itself decides, by
+comparing the bytes. A per-block number told neither of those: nothing
+read it, a reader could not tell from it whether the block in front of
+them was current, and the rule to bump it was enforced by nobody.
 
 ## Formatting
 
@@ -67,9 +69,3 @@ per block: bumping `rust` does not disturb repositories that only consume
   `@path` imports, skipping only code spans and fenced blocks. A bare
   `@ts-ignore` in a block would send it looking for a file named
   `ts-ignore`.
-
-## Versioning
-
-Bump the version on the BEGIN marker whenever the block's content
-changes, even for a typo. The version is how a stale consumer is
-identified in a diff; a silent edit defeats it.

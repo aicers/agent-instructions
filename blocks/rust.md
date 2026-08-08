@@ -1,4 +1,4 @@
-<!-- BEGIN shared:rust v2 -->
+<!-- BEGIN shared:rust -->
 ## Coding standards (Rust)
 
 ### Errors and panics

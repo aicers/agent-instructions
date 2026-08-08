@@ -1,4 +1,4 @@
-<!-- BEGIN shared:db-migrations v1 -->
+<!-- BEGIN shared:db-migrations -->
 ## Schema and migrations
 
 Two rules are easy to get wrong. The repository-specific section below

@@ -73,11 +73,11 @@ everything outside them belongs to the repository:
 ```markdown
 # Instructions for AI coding agents
 
-<!-- BEGIN shared:workflow v1 -->
+<!-- BEGIN shared:workflow -->
 ...generated...
 <!-- END shared:workflow -->
 
-<!-- BEGIN shared:rust v2 -->
+<!-- BEGIN shared:rust -->
 ...generated...
 <!-- END shared:rust -->
 
@@ -93,7 +93,7 @@ lives in one dedicated module and leaves the repository to name it.
 
 ## Changing a block
 
-1. Edit the file in `blocks/` and bump the version on its BEGIN marker.
+1. Edit the file in `blocks/`.
 2. Open a pull request here. CI lints the Markdown, tests the two
    scripts consumers depend on, and checks the authoring rules.
 3. After it merges, tag the release. Consumers pin to tags, so an
@@ -169,12 +169,10 @@ red at once, including pull requests that have nothing to do with the
 instructions, which is how a check gets ignored. Pinned, an edit here
 reaches a repository only through its sync pull request.
 
-That pin is also the answer to "which release is this repository on".
-It is deliberately not repeated in a comment: this input decides what
-the comparison runs against, so unlike a comment it cannot be wrong.
-The per-block `v<N>` on each BEGIN marker is a different thing — it
-tells a reader of `AGENTS.md` which revision of *that block* they are
-looking at, without leaving the file.
+That pin is also the answer to "which release is this repository on",
+and the only one. It is deliberately not repeated in a comment, nor in a
+version on each BEGIN marker: this input decides what the comparison
+runs against, so unlike either of those it cannot be wrong.
 
 The pin covers the blocks, and only the blocks. The workflow checks the
 scripts out separately, from wherever it comes from itself, because they

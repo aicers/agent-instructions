@@ -27,11 +27,11 @@ def main() -> int:
         lines = path.read_text(encoding="utf-8").rstrip("\n").splitlines()
         where = path.relative_to(ROOT)
 
-        if not re.fullmatch(rf"<!-- BEGIN shared:{re.escape(name)} v\d+ -->",
+        if not re.fullmatch(rf"<!-- BEGIN shared:{re.escape(name)} -->",
                             lines[0]):
             failures.append(
                 f"{where}:1: first line must be "
-                f"'<!-- BEGIN shared:{name} v<N> -->'"
+                f"'<!-- BEGIN shared:{name} -->'"
             )
         if not re.fullmatch(rf"<!-- END shared:{re.escape(name)} -->",
                             lines[-1]):
