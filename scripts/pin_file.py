@@ -21,7 +21,8 @@ records what the repository carries, and any driver can read it.
 
 prints `ref=<tag>` and `blocks=<space-separated>`, one per line — the
 shape `$GITHUB_OUTPUT` takes — or just the named field's value, and fails
-naming what is missing when the file does not say both things.
+naming what is wrong when the file does not say both things, or says one
+of them in a shape that would not survive being printed like that.
 
     pin_file.py write <repo-root> <tag> <block>...
 
@@ -115,6 +116,20 @@ def load(root: Path) -> tuple[str, list[str]]:
     if not ref or not ref.group("value").strip():
         raise PinError(f'{path}: no ref = "<release tag>"')
 
+    # Both values leave here as `$GITHUB_OUTPUT` lines and come back as
+    # shell words, so anything that is not one word is not a value: a name
+    # with a space in it silently becomes two blocks, and an unclosed quote
+    # swallows the following line into the tag and writes it out as an
+    # output of its own. Hold the reader to what `dump` will emit, so a
+    # hand-written file fails here naming the value rather than somewhere
+    # downstream naming nothing.
+    tag = ref.group("value").strip()
+    if not NAME.fullmatch(tag):
+        raise PinError(
+            f"{path}: {tag!r} is not a usable release tag"
+            " -- an unclosed quote reads as one of these"
+        )
+
     # A missing list is never an empty one. Read this file as naming no
     # blocks and the drift check would compare nothing while calling every
     # region the repository carries unlisted, and an apply would strip the
@@ -127,8 +142,11 @@ def load(root: Path) -> tuple[str, list[str]]:
         raise PinError(f"{path}: blocks is empty; name the blocks this"
                        " repository carries, or drop the file and the drift"
                        " check together")
+    for block in blocks:
+        if not NAME.fullmatch(block):
+            raise PinError(f"{path}: {block!r} is not a usable block name")
 
-    return ref.group("value").strip(), blocks
+    return tag, blocks
 
 
 def main() -> int:

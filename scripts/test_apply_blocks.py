@@ -416,7 +416,12 @@ blocks = [
             "comments, single quotes, and a list over several lines all read",
         )
 
-        print("reading a pin file that says neither thing")
+        # The last two would otherwise read as something: an unclosed quote
+        # swallows the next line into the tag, and a name with a space in it
+        # splits into two blocks once the caller's shell has it. Both leave
+        # here as `$GITHUB_OUTPUT` lines, so the reader has to refuse what
+        # the writer would.
+        print("reading a pin file that does not say both things usably")
         for description, body, says in (
             ("no file at all", None, "no such file"),
             ("no ref", 'blocks = ["demo"]\n', "no ref"),
@@ -425,6 +430,16 @@ blocks = [
                 "an empty list",
                 'ref = "0.1.0"\nblocks = []\n',
                 "blocks is empty",
+            ),
+            (
+                "an unclosed quote",
+                'ref = "0.1.0\nblocks = ["demo"]\n',
+                "not a usable release tag",
+            ),
+            (
+                "a block name with a space",
+                'ref = "0.1.0"\nblocks = ["de mo"]\n',
+                "not a usable block name",
             ),
         ):
             slug = description.replace(" ", "-")
