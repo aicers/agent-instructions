@@ -129,6 +129,13 @@ def main() -> int:
             in result.stdout,
             "compares both paths",
         )
+        # It used to say blocks/ regardless, which was wrong for exactly
+        # the release this case models -- and for every real one so far.
+        check(
+            "repos.json differs" in result.stdout
+            and "blocks/" not in result.stdout.rsplit("\n", 2)[-2],
+            "names repos.json as what moved, not blocks/",
+        )
 
         print("a release that changes neither path")
         release(
