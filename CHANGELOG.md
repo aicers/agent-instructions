@@ -44,6 +44,16 @@ everything else bumps PATCH.
 
 ### Changed
 
+- The cryptography rules name the function rather than the crate —
+  `constant_time::verify_slices_are_equal` and `rand::SystemRandom`,
+  from whichever crypto stack the crate already has. `ring` and
+  `aws-lc-rs` spell both alike, so the rules hold on either side of a
+  stack migration. The comparison rule reached its example through "in
+  a crate that already depends on `ring`", which correctly stopped
+  anyone adding `ring` for it and left a crate on any other stack with
+  no function named at all; the source-of-randomness rule named `ring`
+  with no such condition, so the two did not even agree on their own
+  shape.
 - The error-type rule leads with the criterion — `thiserror` where a
   caller matches on the kind — and demotes application-versus-library
   to the shorthand it was. The criterion was already in the sentence,

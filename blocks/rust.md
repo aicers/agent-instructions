@@ -194,15 +194,18 @@ Where the crate verifies certificates:
 Where the crate handles key material or secrets:
 
 - Compare secrets, tokens, MACs, and certificate fingerprints in
-  constant time — `ring::constant_time::verify_slices_are_equal` in a
-  crate that already depends on `ring`. Never `==`: the derived
-  `PartialEq` on a secret-bearing type is a timing oracle.
+  constant time — `constant_time::verify_slices_are_equal`, from
+  whichever crypto stack the crate already depends on; `ring` and
+  `aws-lc-rs` both spell it that way. Never `==`: the derived
+  `PartialEq` on a secret-bearing type is a timing oracle. A crate
+  with no such stack does not grow a hand-written loop instead —
+  nothing stops the compiler turning one back into an early return.
 - Draw key material, and any value whose security rests on being
   unguessable (session identifiers, API keys, opaque bearer tokens),
-  from a cryptographically secure source (`ring::rand::SystemRandom`)
-  — never from a general-purpose PRNG, a timestamp, or a process ID.
-  A signed token such as a JWT is not drawn this way at all: its
-  strength comes from the signing key, which is key material.
+  from a cryptographically secure source — the same stack's
+  `rand::SystemRandom`. Never a general-purpose PRNG, a timestamp, or
+  a process ID. A signed token such as a JWT is not drawn this way at
+  all: its strength comes from the signing key, which is key material.
 - A nonce must meet whatever its construction documents, which is
   usually uniqueness under a given key rather than randomness. Counter
   and deterministically derived nonces are correct where the algorithm
