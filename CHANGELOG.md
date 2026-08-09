@@ -25,6 +25,19 @@ rules.
 Below `1.0.0` the grades shift down one: a breaking change bumps MINOR and
 everything else bumps PATCH.
 
+## [Unreleased]
+
+## [0.1.2] - 2026-08-09
+
+### Changed
+
+- All twelve repositories take the `changelog` block. `bootler`,
+  `multifold`, `roxyd`, `aice-web-next`, and `aimer-web` are gaining a
+  `CHANGELOG.md`, so the block follows the file as `STYLE.md` asks.
+  Nothing reaches those five until they are onboarded; `repos.json` is
+  intent, and intent has no effect on a repository that consumes
+  nothing yet.
+
 ## [0.1.1] - 2026-08-09
 
 ### Changed
@@ -87,3 +100,8 @@ contract has never run in a consumer once.
   the working checkout it is run from — which is normally ahead of the tag
   and would leave every pull request pinned to one release and filled from
   another. `scripts/test_sync.py` covers it.
+
+[Unreleased]: https://github.com/aicers/agent-instructions/compare/0.1.2...main
+[0.1.2]: https://github.com/aicers/agent-instructions/compare/0.1.1...0.1.2
+[0.1.1]: https://github.com/aicers/agent-instructions/compare/0.1.0...0.1.1
+[0.1.0]: https://github.com/aicers/agent-instructions/tree/0.1.0
