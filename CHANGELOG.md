@@ -27,6 +27,37 @@ everything else bumps PATCH.
 
 ## [Unreleased]
 
+### Added
+
+- The `rust` block says that dropping a `JoinSet` aborts the tasks in
+  it, and that a graceful shutdown therefore signals its tasks and
+  drains the set with `join_next` rather than relying on `Drop`. The
+  orphan-task rule offered `JoinSet` as the way to keep a handle, which
+  is true, and left the reader to discover that the container whose
+  whole job is holding tasks kills them when it goes.
+- The atomic-write rule separates atomic replacement from durability.
+  Temp-file-and-rename settles which of two versions a reader sees and
+  says nothing about either surviving a power loss; a file the program
+  reads back to resume from needs `sync_all` on the temporary file and
+  on the directory. Naming only the first half read as though it
+  covered both.
+
+### Changed
+
+- The error-type rule leads with the criterion — `thiserror` where a
+  caller matches on the kind — and demotes application-versus-library
+  to the shorthand it was. The criterion was already in the sentence,
+  behind an em dash, which is one clause further than a reader who has
+  found a rule that fits tends to go.
+
+### Fixed
+
+- The atomic-write rule creates its temporary file with the finished
+  file's permissions. `rename` carries the temporary file's inode, and
+  so its mode, to the destination — so a `0o600` file rewritten by the
+  book came back `0o644`, and the two rules, adjacent in the block,
+  undid each other on every write.
+
 ## [0.1.3] - 2026-08-09
 
 ### Added

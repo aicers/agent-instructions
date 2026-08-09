@@ -3,9 +3,11 @@
 
 ### Errors and panics
 
-- **Error types**: Use `anyhow::Result` for application code and
-  `thiserror` for library code — that is, use `thiserror` when a caller
-  needs to match on the error kind, `anyhow` otherwise.
+- **Error types**: Use `thiserror` where a caller needs to match on the
+  error kind, `anyhow` otherwise. Application and library are the usual
+  shorthand for that split, not the rule itself: a binary whose layers
+  pick a recovery strategy from the error still needs typed errors, and
+  a library reaching an application boundary may use `anyhow`.
 - **Context**: Attach context to every fallible call that crosses a
   meaningful boundary: `.with_context(|| format!("reading config from
   {path}"))`. State what was being attempted and on which concrete target
@@ -93,6 +95,15 @@ Where the crate has async code:
 - **No orphan tasks**: Do not discard the `JoinHandle` returned by
   `tokio::spawn`. Hold it, or use a `JoinSet`, and cancel outstanding
   tasks on shutdown. A dropped handle turns a task failure into silence.
+  - Dropping a `JoinSet` aborts every task in it, at whichever `.await`
+    point each has reached. That is the right end for work that may be
+    cut short and the wrong one for work that must finish: an aborted
+    task never runs the rest of its body, so whatever it was going to
+    release, flush, or report does not happen, and the task's own
+    result is discarded with it. Where shutdown must be graceful,
+    signal the tasks — a cancellation token, a closed channel — and
+    `join_next` until the set drains. Do not let the set's `Drop` be
+    the shutdown.
 - **No locks across `.await`**: Never hold a `std::sync::Mutex`/`RwLock`
   guard across an `.await` point (`clippy::await_holding_lock`). Use
   `tokio::sync` primitives, or scope the guard so it is dropped first.
@@ -118,6 +129,20 @@ Where the crate has async code:
 - **Atomic writes**: Write state, config, and other files that another
   process may read atomically — write to a temporary file in the same
   directory, then `fs::rename`. Never truncate-and-write in place.
+  - The temporary file is created with the permissions the finished
+    file needs, by the rule below. `rename` puts the temporary file's
+    inode in place, so the destination keeps the temporary file's
+    mode: a `0o600` file rewritten through a default temporary comes
+    back `0o644`. The write that was meant to preserve the file is
+    what opens it up.
+  - Atomic replacement is not durability. The rename either happens or
+    does not, but neither it nor the bytes before it are on disk until
+    they are flushed. Where the file has to survive a crash or a power
+    loss — anything the program reads back to resume from — `sync_all`
+    the temporary file before the rename, then open the containing
+    directory and `sync_all` that too. This costs a disk round trip
+    each time, so it is a decision per file rather than a default:
+    where a write takes it, say in a comment what is being protected.
 - **Restrictive permissions at creation**: A file holding a secret gets
   its final permissions as it is created, never afterwards —
   `set_permissions` once the bytes are on disk leaves a window in which
