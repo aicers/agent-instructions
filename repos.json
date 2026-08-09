@@ -10,7 +10,7 @@
     "review-web":      ["workflow", "rust", "changelog"],
     "roxyd":           ["workflow", "rust"],
     "review-protocol": ["workflow", "rust", "changelog"],
-    "deploy-core":     ["workflow", "rust"],
+    "deploy-core":     ["workflow", "rust", "changelog"],
     "agentcoop":       ["workflow", "node", "changelog"],
     "aice-web-next":   ["workflow", "node", "db-migrations"],
     "aimer-web":       ["workflow", "node", "db-migrations"]

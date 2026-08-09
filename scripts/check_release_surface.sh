@@ -4,12 +4,23 @@
 #
 #   scripts/check_release_surface.sh <new-tag>
 #
-# `blocks/` is the entire surface a consumer sees. Everything else here is
-# mechanism and reaches a consumer from `@main` — the reusable workflows
-# and the scripts they run — so it is deliberately not compared, and this
-# guard needs no path list. A tag whose `blocks/` tree is byte-identical
-# to the previous release's would give every consumer a pull request whose
-# only content is a moved pin, which is churn dressed as an update.
+# The surface a consumer sees is `blocks/` and `repos.json`: the text of
+# the rules, and which of them each repository takes. `apply.yml` reads
+# both out of the release, so a change to either is something a consumer
+# applies. Everything else here is mechanism and reaches a consumer from
+# `@main` — the reusable workflows and the scripts they run — so it is
+# deliberately not compared.
+#
+# A tag matching the previous release across both paths would give every
+# consumer a pull request whose only content is a moved pin, which is
+# churn dressed as an update.
+#
+# `repos.json` was not always part of this. Until the pin moved out of the
+# caller's workflow file, `blocks:` was an input each consumer passed and
+# `repos.json` was upstream bookkeeping nobody downstream ever read — so
+# this guard compared one path and said it needed no list. Adding a block
+# to a repository is now a release, and comparing only `blocks/` refused
+# the one release that carries it.
 #
 # The previous release is the tag immediately below <new-tag> in
 # MAJOR.MINOR.PATCH order, over the tags release.yml triggers on. The
@@ -53,17 +64,17 @@ if [[ $prev_tag == "$new_tag" ]]; then
   exit 0
 fi
 
-echo "comparing blocks/: $prev_tag -> $new_tag"
+echo "comparing blocks/ and repos.json: $prev_tag -> $new_tag"
 
-if git diff --quiet "$prev_tag" "$new_tag" -- blocks/; then
+if git diff --quiet "$prev_tag" "$new_tag" -- blocks/ repos.json; then
   cat >&2 <<EOF
-blocks/ is byte-identical between $prev_tag and $new_tag.
+Nothing a consumer applies changed between $prev_tag and $new_tag.
 
-There is nothing here for a consumer to apply: every repository would get
-a pull request that moves its pin and changes no rule. Scripts and
-workflows reach consumers from @main rather than from the tag, so a change
-to one of those is not a reason to cut a release either. This tag should
-not have been cut.
+blocks/ and repos.json are both byte-identical, so every repository would
+get a pull request that moves its pin and changes neither a rule nor which
+rules it takes. Scripts and workflows reach consumers from @main rather
+than from the tag, so a change to one of those is not a reason to cut a
+release either. This tag should not have been cut.
 EOF
   exit 1
 fi

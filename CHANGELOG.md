@@ -25,6 +25,22 @@ rules.
 Below `1.0.0` the grades shift down one: a breaking change bumps MINOR and
 everything else bumps PATCH.
 
+## [0.1.1] - 2026-08-09
+
+### Changed
+
+- `deploy-core` takes the `changelog` block. The repository is
+  introducing a `CHANGELOG.md`, and the block follows the file.
+
+### Fixed
+
+- The release-surface guard compares `repos.json` as well as `blocks/`.
+  Since the pin moved out of the caller's workflow file, `apply.yml`
+  reads `repos.json` out of the release to decide which blocks a
+  repository takes — so giving a repository another block is a release
+  with nothing in `blocks/`, which the guard refused. It was refusing
+  exactly the release that carries such a change, and `0.1.1` is one.
+
 ## [0.1.0] - 2026-08-08
 
 First release under `MAJOR.MINOR.PATCH`. The monotonic `v1` and `v2` tags
