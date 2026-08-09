@@ -13,44 +13,45 @@ name: Apply shared instruction blocks
 #         contents: write
 #         pull-requests: write
 #       uses: aicers/agent-instructions/.github/workflows/apply.yml@main
-#       with:
-#         blocks: "workflow rust changelog"
-#       secrets:
-#         token: ${{ secrets.INSTRUCTIONS_TOKEN }}
 #
-# It rewrites the caller's marked blocks from the latest release of
-# aicers/agent-instructions, moves the caller's drift-check pin to that
-# release, and opens one pull request. A caller already on the latest
-# release gets nothing.
+# No inputs and no secrets. It rewrites the caller's marked blocks from
+# the latest release of aicers/agent-instructions, records that release
+# and the blocks in the caller's `.agents/instructions.toml`, and opens
+# one pull request. A caller already on the latest release gets nothing.
+#
+# Which blocks the caller takes is read from `repos.json` in the release,
+# not from the caller: repos.json is where it is decided which repository
+# consumes which blocks, and a list restated in the caller would be a
+# second source for one value — one that upstream cannot edit, so a newly
+# added block could never be delivered by this job at all.
 #
 # The direction matters. A workflow here that pushed into twelve
 # repositories would need a token with write access to all of them, which
 # this repository deliberately does not hold. Inverted, each caller pushes
-# only to itself, with a credential it holds itself and this repository
-# never sees. A caller also stops being able to lag silently: the
-# scheduled run proposes the release whether or not anyone remembered.
+# only to itself, with its own default GITHUB_TOKEN. A caller also stops
+# being able to lag silently: the scheduled run proposes the release
+# whether or not anyone remembered.
 #
-# `token` is why the caller needs a credential at all rather than only its
-# default GITHUB_TOKEN. Moving the drift-check pin means rewriting
-# `instructions-ref` in the caller's own workflow file, and GitHub refuses
-# a push that touches `.github/workflows/` when it is authenticated as the
-# GitHub Actions app -- "refusing to allow a GitHub App to create or
-# update workflow ... without `workflows` permission". No `permissions:`
-# grant fixes it: the workflow permission set has no `workflows` scope at
-# all. So the caller supplies a fine-grained personal access token, or a
-# GitHub App installation token, with Contents, Pull requests, and
-# Workflows write on itself. Left unset, the job still runs and still
-# fails, but with a step that says this rather than with a rejected ref.
+# GITHUB_TOKEN is enough because nothing this job writes is under
+# `.github/workflows/`. GitHub refuses a push touching that directory when
+# it is authenticated as the GitHub Actions app -- "refusing to allow a
+# GitHub App to create or update workflow ... without `workflows`
+# permission" -- and no `permissions:` grant fixes it, since the workflow
+# permission set has no `workflows` scope at all. Keeping the pin out of
+# the caller's workflow file is what spares every consumer a token minted,
+# scoped, registered, and renewed for that one line.
+#
+# The price is that the pull request arrives with no checks on it: one
+# opened with GITHUB_TOKEN triggers no workflow runs, which is GitHub's
+# guard against a workflow retriggering itself forever. Closing and
+# reopening it runs them, attributed to whoever clicked. Worth doing on
+# the first apply in a repository; after that the caller's drift check
+# would only be comparing a copy this job just wrote from the release
+# against that same release, and it runs on the default branch at merge
+# regardless.
 #
 # The organization setting "Allow GitHub Actions to create and approve
-# pull requests" has to be enabled when `token` is a GitHub App
-# installation token, or the last step fails. A personal access token
-# opens the pull request as its own user and is not covered by it.
-#
-# A pull request opened with `token` carries checks, since the events came
-# from that credential rather than from GITHUB_TOKEN, which triggers no
-# workflow runs. That includes the caller's own drift check, which is the
-# one that has an opinion about what this job just wrote.
+# pull requests" has to be enabled, or the last step fails.
 #
 # No permissions block here. A called workflow can only narrow what the
 # caller granted, so restating them would add a way for this file to
@@ -58,37 +59,13 @@ name: Apply shared instruction blocks
 
 on:
   workflow_call:
-    inputs:
-      blocks:
-        description: Space-separated block names to apply
-        required: true
-        type: string
-      target:
-        description: >
-          File in the caller repository holding the blocks. Must resolve
-          inside that repository; one that does not is refused.
-        required: false
-        default: AGENTS.md
-        type: string
-    secrets:
-      token:
-        description: >
-          Token with Contents, Pull requests, and Workflows write on the
-          calling repository, used to push the branch and open the pull
-          request. Needed because the drift-check pin lives in a workflow
-          file and GITHUB_TOKEN may not push one.
-        required: false
 
 jobs:
   apply:
     runs-on: ubuntu-latest
     steps:
-      # `token` rather than the default GITHUB_TOKEN, because checkout is
-      # also what leaves credentials behind for the push below.
       - name: Check out the calling repository
         uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.token || github.token }}
 
       # Two checkouts, deliberately, for the reason check-drift.yml gives:
       # the scripts are mechanism, like this workflow file, and come from
@@ -116,6 +93,9 @@ jobs:
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "latest release is $tag"
 
+      # The blocks and the block list both come from here. repos.json in
+      # the release says what this repository should carry, so a release
+      # can add a block to a repository as well as change one.
       - name: Check out the released blocks
         uses: actions/checkout@v4
         with:
@@ -148,15 +128,23 @@ jobs:
 
       - name: Apply the released blocks
         env:
-          BLOCKS: ${{ inputs.blocks }}
-          TARGET: ${{ inputs.target }}
+          REPOSITORY: ${{ github.repository }}
           TAG: ${{ steps.release.outputs.tag }}
         run: |
           set -euo pipefail
-          # BLOCKS is a space-separated list and is meant to split.
           python3 .agent-instructions/scripts/apply_blocks.py \
-            --target "$TARGET" \
-            .agent-instructions-blocks/blocks . "$TAG" $BLOCKS
+            .agent-instructions-blocks . "$REPOSITORY" "$TAG"
+
+      # Read back rather than resolved a second time here: what went into
+      # the pull-request body is then what was written, retirements and
+      # all.
+      - name: Read the applied block list
+        id: applied
+        run: |
+          set -euo pipefail
+          blocks=$(python3 .agent-instructions/scripts/pin_file.py \
+                     read . blocks)
+          echo "blocks=$blocks" >> "$GITHUB_OUTPUT"
 
       # Both checkouts sit inside the caller's working tree. Nothing below
       # stages an untracked path, but leaving them there makes that a
@@ -169,31 +157,12 @@ jobs:
         env:
           TAG: ${{ steps.release.outputs.tag }}
           BRANCH: ${{ steps.branch.outputs.name }}
-          HAS_TOKEN: ${{ secrets.token != '' }}
         run: |
           set -euo pipefail
 
           if [ -z "$(git status --porcelain)" ]; then
             echo "nothing to commit: this tree already matches $TAG"
             exit 0
-          fi
-
-          # The pin lives in a workflow file, and a push carrying one is
-          # rejected when the credential is GITHUB_TOKEN. Nothing has been
-          # pushed yet at this point, so say what is wrong here rather than
-          # letting git report it as a rejected ref eight lines later.
-          if [ "$HAS_TOKEN" != true ] &&
-             git status --porcelain -- .github/workflows | grep -q .; then
-            echo "::error::This release moves the drift-check pin in" \
-                 ".github/workflows, and GitHub refuses a push touching" \
-                 "that directory when it is authenticated with the default" \
-                 "GITHUB_TOKEN. Pass a fine-grained personal access token" \
-                 "or GitHub App installation token with Contents, Pull" \
-                 "requests, and Workflows write on this repository, as" \
-                 "'secrets: {token: ...}' on the job that calls this" \
-                 "workflow. No 'permissions:' grant is an alternative:" \
-                 "there is no 'workflows' scope for a workflow to request."
-            exit 1
           fi
 
           git config user.name "github-actions[bot]"
@@ -223,10 +192,8 @@ jobs:
       # anything, not only when this run is the one that wrote it.
       - name: Open the pull request
         env:
-          # The same credential that pushed the branch, so the request is
-          # opened by whoever owns it and its checks run.
-          GH_TOKEN: ${{ secrets.token || github.token }}
-          BLOCKS: ${{ inputs.blocks }}
+          GH_TOKEN: ${{ github.token }}
+          BLOCKS: ${{ steps.applied.outputs.blocks }}
           BRANCH: ${{ steps.branch.outputs.name }}
           BASE: ${{ steps.branch.outputs.base }}
           TAG: ${{ steps.release.outputs.tag }}
@@ -253,9 +220,11 @@ jobs:
           # The pull-request body is not wrapped: GitHub renders it as
           # Markdown, so hard line breaks would show up in the rendering.
           printf '%s\n' \
-            "Applied from \`aicers/agent-instructions\` at \`$TAG\` by its \`apply.yml\` reusable workflow, which also moved this repository's \`instructions-ref\` pin." \
+            "Applied from \`aicers/agent-instructions\` at \`$TAG\` by its \`apply.yml\` reusable workflow, which also moved this repository's pin in \`.agents/instructions.toml\`." \
             "" \
             "Blocks in this pull request: $BLOCKS" \
+            "" \
+            "This pull request has no checks on it. One opened with \`GITHUB_TOKEN\` triggers no workflow runs — close it and reopen it to run them, which is worth doing the first time this job runs here." \
             "" \
             "The marked blocks are generated. Change the wording upstream in \`aicers/agent-instructions\` rather than editing it here — the drift check in CI will fail if this repository's copy diverges." \
             > "$RUNNER_TEMP/pull-request-body.md"

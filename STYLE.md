@@ -45,7 +45,7 @@ filename:
 ```
 
 The markers carry no version. Which release a repository is on is the
-`instructions-ref` pin beside its drift check, and whether the blocks it
+`ref` in its `.agents/instructions.toml`, and whether the blocks it
 carries match that release is what the drift check itself decides, by
 comparing the bytes. A per-block number told neither of those: nothing
 read it, a reader could not tell from it whether the block in front of

@@ -19,11 +19,11 @@ jobs:
       - name: Test render.py
         run: python3 scripts/test_render.py
 
-      - name: Test pin.py
-        run: python3 scripts/test_pin.py
-
       - name: Test apply_blocks.py
         run: python3 scripts/test_apply_blocks.py
+
+      - name: Test sync.sh
+        run: python3 scripts/test_sync.py
 
       - name: Test check_release_surface.sh
         run: python3 scripts/test_release_surface.py

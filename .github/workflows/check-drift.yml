@@ -5,42 +5,41 @@ name: Shared instruction-block drift
 #   jobs:
 #     instructions:
 #       uses: aicers/agent-instructions/.github/workflows/check-drift.yml@main
-#       with:
-#         blocks: "workflow rust changelog"
-#         instructions-ref: 1.0.0
 #
 # It fails when the marked blocks in the caller's AGENTS.md differ from
-# the blocks in aicers/agent-instructions at instructions-ref.
+# the blocks in aicers/agent-instructions at the release the caller says
+# it carries.
 #
-# instructions-ref is required, and is a release tag rather than a
-# branch. Comparing against a moving branch would turn every upstream
-# edit into a red build in ten repositories at once, including pull
-# requests that have nothing to do with the instructions — which trains
-# everyone to ignore this check. Pinned, an upstream edit reaches a
-# repository only through the pull request that moves the pin.
+# Which release that is, and which blocks it has, come from the caller's
+# `.agents/instructions.toml`:
 #
-# The pin is also the record of which release a repository carries. It
-# is not duplicated in a comment anywhere: this input decides what the
-# comparison runs against, so unlike a comment it cannot be wrong.
+#   ref = "0.1.0"
+#   blocks = ["workflow", "rust"]
+#
+# Neither is an input. They would then have two sources -- that file and
+# the caller's own workflow -- and the apply job can only write one of
+# them, since GitHub refuses a push touching `.github/workflows/` from
+# the default GITHUB_TOKEN. A caller with nothing to pass is also a
+# caller nothing upstream ever has to rewrite.
+#
+# `ref` is a release tag rather than a branch. Comparing against a moving
+# branch would turn every upstream edit into a red build in ten
+# repositories at once, including pull requests that have nothing to do
+# with the instructions — which trains everyone to ignore this check.
+# Pinned, an upstream edit reaches a repository only through the pull
+# request that moves the pin.
+#
+# The pin is also the record of which release a repository carries. It is
+# not duplicated in a comment anywhere: it decides what the comparison
+# runs against, so unlike a comment it cannot be wrong.
 
 on:
   workflow_call:
     inputs:
-      blocks:
-        description: Space-separated block names to verify
-        required: true
-        type: string
       target:
         description: File in the caller repository holding the blocks
         required: false
         default: AGENTS.md
-        type: string
-      instructions-ref:
-        description: >
-          Release tag of aicers/agent-instructions to compare against.
-          Required: floating on a branch is what this pin exists to
-          prevent.
-        required: true
         type: string
 
 jobs:
@@ -65,36 +64,52 @@ jobs:
           ref: main
           path: .agent-instructions
 
+      # A repository with no pin file, or one that does not say both
+      # things, fails here rather than being read as carrying no blocks --
+      # which would pass this check by comparing nothing, while the step
+      # below called every region it has unlisted.
+      - name: Read the pin
+        id: pin
+        run: |
+          set -euo pipefail
+          pin=$(python3 .agent-instructions/scripts/pin_file.py read .)
+          echo "$pin"
+          echo "$pin" >> "$GITHUB_OUTPUT"
+
       - name: Check out the pinned blocks
         uses: actions/checkout@v4
         with:
           repository: aicers/agent-instructions
-          ref: ${{ inputs.instructions-ref }}
+          ref: ${{ steps.pin.outputs.ref }}
           path: .agent-instructions-blocks
 
       - name: Compare blocks
+        env:
+          BLOCKS: ${{ steps.pin.outputs.blocks }}
+          TARGET: ${{ inputs.target }}
         run: |
           status=0
-          for block in ${{ inputs.blocks }}; do
+          # BLOCKS is a space-separated list and is meant to split.
+          for block in $BLOCKS; do
             python3 .agent-instructions/scripts/render.py check \
-              "${{ inputs.target }}" \
+              "$TARGET" \
               ".agent-instructions-blocks/blocks/$block.md" || status=1
           done
           if [ "$status" -ne 0 ]; then
-            echo "::error::AGENTS.md is out of date with aicers/agent-instructions."
+            echo "::error::$TARGET is out of date with aicers/agent-instructions."
             echo "Do not edit the marked blocks here. Change them upstream and"
             echo "cut a release; this repository's scheduled apply.yml job then"
             echo "opens the pull request that updates this copy."
           fi
           exit "$status"
 
-      # A block retired upstream is dropped from `blocks`, and the step above
-      # then stops looking at it -- leaving a stale copy of a rule sitting
-      # beside its replacement with nothing to notice. Compare the other
-      # direction too.
+      # A block retired upstream is dropped from the pin file, and the step
+      # above then stops looking at it -- leaving a stale copy of a rule
+      # sitting beside its replacement with nothing to notice. Compare the
+      # other direction too.
       - name: Reject blocks this repository no longer lists
         env:
-          BLOCKS: ${{ inputs.blocks }}
+          BLOCKS: ${{ steps.pin.outputs.blocks }}
           TARGET: ${{ inputs.target }}
         run: |
           set -euo pipefail
