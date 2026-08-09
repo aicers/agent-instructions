@@ -27,6 +27,50 @@ everything else bumps PATCH.
 
 ## [Unreleased]
 
+### Added
+
+- The `rust` block says that dropping a `JoinSet` aborts the async
+  tasks in it — locals are dropped, the rest of the body is not run,
+  and a `spawn_blocking` task already running is not stopped at all —
+  and that a graceful shutdown therefore signals its tasks and drains
+  the set with `join_next` rather than relying on `Drop`. The
+  orphan-task rule offered `JoinSet` as the way to keep a handle, which
+  is true, and left the reader to discover that the container whose
+  whole job is holding tasks kills them when it goes.
+- The atomic-write rule separates atomic replacement from durability.
+  Temp-file-and-rename settles which of two versions a reader sees and
+  says nothing about either surviving a power loss; a file the program
+  reads back to resume from needs `sync_all` on the temporary file and
+  on the directory. Naming only the first half read as though it
+  covered both.
+
+### Changed
+
+- The cryptography rules name the function rather than the crate —
+  `constant_time::verify_slices_are_equal` and `rand::SystemRandom`,
+  from whichever crypto stack the crate already has. `ring` and
+  `aws-lc-rs` spell both alike, so the rules hold on either side of a
+  stack migration. The comparison rule reached its example through "in
+  a crate that already depends on `ring`", which correctly stopped
+  anyone adding `ring` for it and left a crate on any other stack with
+  no function named at all; the source-of-randomness rule named `ring`
+  with no such condition, so the two did not even agree on their own
+  shape.
+- The error-type rule leads with the criterion — `thiserror` where a
+  caller matches on the kind — and demotes application-versus-library
+  to the shorthand it was. The criterion was already in the sentence,
+  behind an em dash, which is one clause further than a reader who has
+  found a rule that fits tends to go.
+
+### Fixed
+
+- The atomic-write rule creates its temporary file with the finished
+  file's permissions. `rename` carries the temporary file's inode, and
+  so its mode, to the destination, which means the mode a file ends up
+  with is whichever one its temporary happened to be made with — the
+  umask under `OpenOptions`, `0o600` under `tempfile`. The two rules,
+  adjacent in the block, could quietly undo each other.
+
 ## [0.1.3] - 2026-08-09
 
 ### Added

@@ -3,9 +3,11 @@
 
 ### Errors and panics
 
-- **Error types**: Use `anyhow::Result` for application code and
-  `thiserror` for library code — that is, use `thiserror` when a caller
-  needs to match on the error kind, `anyhow` otherwise.
+- **Error types**: Use `thiserror` where a caller needs to match on the
+  error kind, `anyhow` otherwise. Application and library are the usual
+  shorthand for that split, not the rule itself: a binary whose layers
+  pick a recovery strategy from the error still needs typed errors, and
+  a library reaching an application boundary may use `anyhow`.
 - **Context**: Attach context to every fallible call that crosses a
   meaningful boundary: `.with_context(|| format!("reading config from
   {path}"))`. State what was being attempted and on which concrete target
@@ -93,6 +95,16 @@ Where the crate has async code:
 - **No orphan tasks**: Do not discard the `JoinHandle` returned by
   `tokio::spawn`. Hold it, or use a `JoinSet`, and cancel outstanding
   tasks on shutdown. A dropped handle turns a task failure into silence.
+  - Dropping a `JoinSet` aborts its async tasks at whichever `.await`
+    point each has reached. Locals are dropped, so `Drop` runs and an
+    RAII guard still releases; what is lost is the rest of the body,
+    which is everything that had to be awaited — a flush, a commit, a
+    goodbye frame — along with the task's result. None of it reaches a
+    `spawn_blocking` task: abort may prevent one that has not started,
+    and cannot stop one that has, so a blocking task needs its own way
+    of being told to stop. Where shutdown must be graceful, signal the
+    tasks — a cancellation token, a closed channel — and `join_next`
+    until the set drains. Do not let the set's `Drop` be the shutdown.
 - **No locks across `.await`**: Never hold a `std::sync::Mutex`/`RwLock`
   guard across an `.await` point (`clippy::await_holding_lock`). Use
   `tokio::sync` primitives, or scope the guard so it is dropped first.
@@ -118,6 +130,22 @@ Where the crate has async code:
 - **Atomic writes**: Write state, config, and other files that another
   process may read atomically — write to a temporary file in the same
   directory, then `fs::rename`. Never truncate-and-write in place.
+  - The temporary file is created with the permissions the finished
+    file needs, by the rule below. `rename` puts the temporary file's
+    inode in place, so the destination ends up with whatever mode the
+    temporary had and not the mode of the file it replaced. Which
+    mode that is depends on how the temporary was made — `OpenOptions`
+    leaves it to the umask, `tempfile` defaults to `0o600` — and
+    neither is a decision anyone made about this file. The write meant
+    to preserve the file is what changes it.
+  - Atomic replacement is not durability. The rename either happens or
+    does not, but neither it nor the bytes before it are on disk until
+    they are flushed. Where the file has to survive a crash or a power
+    loss — anything the program reads back to resume from — `sync_all`
+    the temporary file before the rename, then open the containing
+    directory and `sync_all` that too. This costs a disk round trip
+    each time, so it is a decision per file rather than a default:
+    where a write takes it, say in a comment what is being protected.
 - **Restrictive permissions at creation**: A file holding a secret gets
   its final permissions as it is created, never afterwards —
   `set_permissions` once the bytes are on disk leaves a window in which
@@ -169,15 +197,18 @@ Where the crate verifies certificates:
 Where the crate handles key material or secrets:
 
 - Compare secrets, tokens, MACs, and certificate fingerprints in
-  constant time — `ring::constant_time::verify_slices_are_equal` in a
-  crate that already depends on `ring`. Never `==`: the derived
-  `PartialEq` on a secret-bearing type is a timing oracle.
+  constant time — `constant_time::verify_slices_are_equal`, from
+  whichever crypto stack the crate already depends on; `ring` and
+  `aws-lc-rs` both spell it that way. Never `==`: the derived
+  `PartialEq` on a secret-bearing type is a timing oracle. A crate
+  with no such stack does not grow a hand-written loop instead —
+  nothing stops the compiler turning one back into an early return.
 - Draw key material, and any value whose security rests on being
   unguessable (session identifiers, API keys, opaque bearer tokens),
-  from a cryptographically secure source (`ring::rand::SystemRandom`)
-  — never from a general-purpose PRNG, a timestamp, or a process ID.
-  A signed token such as a JWT is not drawn this way at all: its
-  strength comes from the signing key, which is key material.
+  from a cryptographically secure source — the same stack's
+  `rand::SystemRandom`. Never a general-purpose PRNG, a timestamp, or
+  a process ID. A signed token such as a JWT is not drawn this way at
+  all: its strength comes from the signing key, which is key material.
 - A nonce must meet whatever its construction documents, which is
   usually uniqueness under a given key rather than randomness. Counter
   and deterministically derived nonces are correct where the algorithm
