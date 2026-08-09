@@ -29,9 +29,11 @@ everything else bumps PATCH.
 
 ### Added
 
-- The `rust` block says that dropping a `JoinSet` aborts the tasks in
-  it, and that a graceful shutdown therefore signals its tasks and
-  drains the set with `join_next` rather than relying on `Drop`. The
+- The `rust` block says that dropping a `JoinSet` aborts the async
+  tasks in it — locals are dropped, the rest of the body is not run,
+  and a `spawn_blocking` task already running is not stopped at all —
+  and that a graceful shutdown therefore signals its tasks and drains
+  the set with `join_next` rather than relying on `Drop`. The
   orphan-task rule offered `JoinSet` as the way to keep a handle, which
   is true, and left the reader to discover that the container whose
   whole job is holding tasks kills them when it goes.
@@ -64,9 +66,10 @@ everything else bumps PATCH.
 
 - The atomic-write rule creates its temporary file with the finished
   file's permissions. `rename` carries the temporary file's inode, and
-  so its mode, to the destination — so a `0o600` file rewritten by the
-  book came back `0o644`, and the two rules, adjacent in the block,
-  undid each other on every write.
+  so its mode, to the destination, which means the mode a file ends up
+  with is whichever one its temporary happened to be made with — the
+  umask under `OpenOptions`, `0o600` under `tempfile`. The two rules,
+  adjacent in the block, undid each other on every write.
 
 ## [0.1.3] - 2026-08-09
 

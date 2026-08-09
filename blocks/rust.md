@@ -95,15 +95,16 @@ Where the crate has async code:
 - **No orphan tasks**: Do not discard the `JoinHandle` returned by
   `tokio::spawn`. Hold it, or use a `JoinSet`, and cancel outstanding
   tasks on shutdown. A dropped handle turns a task failure into silence.
-  - Dropping a `JoinSet` aborts every task in it, at whichever `.await`
-    point each has reached. That is the right end for work that may be
-    cut short and the wrong one for work that must finish: an aborted
-    task never runs the rest of its body, so whatever it was going to
-    release, flush, or report does not happen, and the task's own
-    result is discarded with it. Where shutdown must be graceful,
-    signal the tasks — a cancellation token, a closed channel — and
-    `join_next` until the set drains. Do not let the set's `Drop` be
-    the shutdown.
+  - Dropping a `JoinSet` aborts its async tasks at whichever `.await`
+    point each has reached. Locals are dropped, so `Drop` runs and an
+    RAII guard still releases; what is lost is the rest of the body,
+    which is everything that had to be awaited — a flush, a commit, a
+    goodbye frame — along with the task's result. A `spawn_blocking`
+    task already running is not stopped at all: abort only keeps a
+    queued one from starting, so a blocking task needs its own way of
+    being told to stop. Where shutdown must be graceful, signal the
+    tasks — a cancellation token, a closed channel — and `join_next`
+    until the set drains. Do not let the set's `Drop` be the shutdown.
 - **No locks across `.await`**: Never hold a `std::sync::Mutex`/`RwLock`
   guard across an `.await` point (`clippy::await_holding_lock`). Use
   `tokio::sync` primitives, or scope the guard so it is dropped first.
@@ -131,10 +132,12 @@ Where the crate has async code:
   directory, then `fs::rename`. Never truncate-and-write in place.
   - The temporary file is created with the permissions the finished
     file needs, by the rule below. `rename` puts the temporary file's
-    inode in place, so the destination keeps the temporary file's
-    mode: a `0o600` file rewritten through a default temporary comes
-    back `0o644`. The write that was meant to preserve the file is
-    what opens it up.
+    inode in place, so the destination ends up with whatever mode the
+    temporary had and not the mode of the file it replaced. Which
+    mode that is depends on how the temporary was made — `OpenOptions`
+    leaves it to the umask, `tempfile` defaults to `0o600` — and
+    neither is a decision anyone made about this file. The write meant
+    to preserve the file is what changes it.
   - Atomic replacement is not durability. The rename either happens or
     does not, but neither it nor the bytes before it are on disk until
     they are flushed. Where the file has to survive a crash or a power
