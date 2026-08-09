@@ -25,7 +25,7 @@ rules.
 Below `1.0.0` the grades shift down one: a breaking change bumps MINOR and
 everything else bumps PATCH.
 
-## [Unreleased]
+## [0.1.4] - 2026-08-09
 
 ### Added
 
@@ -171,7 +171,7 @@ contract has never run in a consumer once.
   and would leave every pull request pinned to one release and filled from
   another. `scripts/test_sync.py` covers it.
 
-[Unreleased]: https://github.com/aicers/agent-instructions/compare/0.1.3...main
+[0.1.4]: https://github.com/aicers/agent-instructions/compare/0.1.3...0.1.4
 [0.1.3]: https://github.com/aicers/agent-instructions/compare/0.1.2...0.1.3
 [0.1.2]: https://github.com/aicers/agent-instructions/compare/0.1.1...0.1.2
 [0.1.1]: https://github.com/aicers/agent-instructions/compare/0.1.0...0.1.1
