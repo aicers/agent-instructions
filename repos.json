@@ -6,6 +6,7 @@
     "bootler":         ["workflow", "rust", "changelog"],
     "bootroot":        ["workflow", "rust", "changelog"],
     "multifold":       ["workflow", "rust", "changelog"],
+    "review":          ["workflow", "rust", "changelog"],
     "review-database": ["workflow", "rust", "changelog"],
     "review-web":      ["workflow", "rust", "changelog"],
     "roxyd":           ["workflow", "rust", "changelog"],

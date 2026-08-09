@@ -25,6 +25,16 @@ rules.
 Below `1.0.0` the grades shift down one: a breaking change bumps MINOR and
 everything else bumps PATCH.
 
+## [0.1.5] - 2026-08-09
+
+### Added
+
+- `review` joins the roster, taking `workflow`, `rust`, and `changelog`
+  — the same list as `review-database`, since it is Rust and already
+  keeps a `CHANGELOG.md`. Nothing reaches it until it is onboarded, but
+  until `repos.json` names it the apply refuses the repository outright,
+  so the roster has to move first.
+
 ## [0.1.4] - 2026-08-09
 
 ### Added
@@ -171,6 +181,7 @@ contract has never run in a consumer once.
   and would leave every pull request pinned to one release and filled from
   another. `scripts/test_sync.py` covers it.
 
+[0.1.5]: https://github.com/aicers/agent-instructions/compare/0.1.4...0.1.5
 [0.1.4]: https://github.com/aicers/agent-instructions/compare/0.1.3...0.1.4
 [0.1.3]: https://github.com/aicers/agent-instructions/compare/0.1.2...0.1.3
 [0.1.2]: https://github.com/aicers/agent-instructions/compare/0.1.1...0.1.2
