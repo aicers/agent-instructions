@@ -232,14 +232,23 @@ Where the crate handles key material or secrets:
 
 - Use `tempfile::tempdir()` for tests that need temporary files or
   directories. Never write to fixed paths.
-- Do not mutate the process environment in tests. Pass the value in as a
-  parameter, or set it for a child process with `Command::env`. In
-  edition 2024 `env::set_var` is `unsafe` because another thread reading
-  the environment concurrently is undefined behaviour, and a `Mutex`
-  shared between tests does not establish otherwise: it serialises the
-  tests and says nothing about a runtime thread or a dependency reading
-  in the background. Where tests already do this, removing it is the
-  fix, not adding another lock.
+- Do not mutate the process environment in tests with `env::set_var` or
+  `env::remove_var`. In Rust 2024 these are `unsafe`: outside Windows,
+  another thread reading the environment concurrently can cause
+  undefined behaviour. A `Mutex` shared between tests does not make the
+  call sound — it serialises only the code that takes the lock, not a
+  runtime thread or a dependency reading in the background. Where a
+  test already mutates the environment, remove the mutation rather than
+  adding another lock.
+- Test environment-dependent behaviour by passing the value in — as a
+  parameter, a configuration map, or a resolver the test substitutes.
+  For a child process, set its environment with `Command::env`,
+  `Command::env_remove`, or `Command::env_clear`, rather than changing
+  this process's.
+- Keep `env::var` at a thin composition boundary: read the values once
+  and pass them to the logic underneath. Test that boundary through a
+  child process when an exact environment must be asserted; logic that
+  receives its values needs no environment at all.
 - Do not synchronise with `sleep`. Await the condition, or use
   `tokio::time` pause/advance with the `test-util` feature.
 - Do not hard-code port numbers; bind port 0 and read back the assigned

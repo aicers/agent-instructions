@@ -27,6 +27,32 @@ everything else bumps PATCH.
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-08-09
+
+### Added
+
+- The `rust` block says how production code should be shaped so tests
+  never need to mutate the process environment: keep `env::var` at a
+  thin composition boundary and pass the values to the logic
+  underneath. The ban alone left the situation that produces the
+  violation in place, which is how one repository ended up with the
+  forbidden lock reimplemented six times.
+
+### Changed
+
+- The environment rule names `remove_var` beside `set_var`, offers a
+  configuration map or a substitutable resolver as well as a plain
+  parameter, and points at `Command::env_remove` and
+  `Command::env_clear` for a child process that needs a clean
+  environment rather than a set value.
+
+### Fixed
+
+- The release-surface guard names the path that actually differs. It
+  reported `blocks/ differs` however the comparison passed, which has
+  been wrong for every release since it started comparing `repos.json`
+  — both of them.
+
 ## [0.1.2] - 2026-08-09
 
 ### Changed
@@ -101,7 +127,8 @@ contract has never run in a consumer once.
   and would leave every pull request pinned to one release and filled from
   another. `scripts/test_sync.py` covers it.
 
-[Unreleased]: https://github.com/aicers/agent-instructions/compare/0.1.2...main
+[Unreleased]: https://github.com/aicers/agent-instructions/compare/0.1.3...main
+[0.1.3]: https://github.com/aicers/agent-instructions/compare/0.1.2...0.1.3
 [0.1.2]: https://github.com/aicers/agent-instructions/compare/0.1.1...0.1.2
 [0.1.1]: https://github.com/aicers/agent-instructions/compare/0.1.0...0.1.1
 [0.1.0]: https://github.com/aicers/agent-instructions/tree/0.1.0

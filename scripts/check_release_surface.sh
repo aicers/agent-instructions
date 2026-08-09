@@ -79,4 +79,9 @@ EOF
   exit 1
 fi
 
-echo "blocks/ differs; proceeding"
+# Name what actually moved. Saying "blocks/ differs" was wrong for every
+# release that changed only repos.json, which both releases since the
+# guard started comparing it have been.
+changed=$(git diff --name-only "$prev_tag" "$new_tag" -- blocks/ repos.json \
+          | cut -d/ -f1 | sort -u | paste -sd' ' -)
+echo "$changed differs; proceeding"
