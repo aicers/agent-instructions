@@ -99,10 +99,10 @@ Where the crate has async code:
     point each has reached. Locals are dropped, so `Drop` runs and an
     RAII guard still releases; what is lost is the rest of the body,
     which is everything that had to be awaited — a flush, a commit, a
-    goodbye frame — along with the task's result. A `spawn_blocking`
-    task already running is not stopped at all: abort only keeps a
-    queued one from starting, so a blocking task needs its own way of
-    being told to stop. Where shutdown must be graceful, signal the
+    goodbye frame — along with the task's result. None of it reaches a
+    `spawn_blocking` task: abort may prevent one that has not started,
+    and cannot stop one that has, so a blocking task needs its own way
+    of being told to stop. Where shutdown must be graceful, signal the
     tasks — a cancellation token, a closed channel — and `join_next`
     until the set drains. Do not let the set's `Drop` be the shutdown.
 - **No locks across `.await`**: Never hold a `std::sync::Mutex`/`RwLock`

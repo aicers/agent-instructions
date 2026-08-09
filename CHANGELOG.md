@@ -69,7 +69,7 @@ everything else bumps PATCH.
   so its mode, to the destination, which means the mode a file ends up
   with is whichever one its temporary happened to be made with — the
   umask under `OpenOptions`, `0o600` under `tempfile`. The two rules,
-  adjacent in the block, undid each other on every write.
+  adjacent in the block, could quietly undo each other.
 
 ## [0.1.3] - 2026-08-09
 
