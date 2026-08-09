@@ -38,9 +38,12 @@ def git(root: Path, *args: str) -> None:
     )
 
 
-def release(root: Path, tag: str, *, blocks: str, notes: str) -> None:
+def release(
+    root: Path, tag: str, *, blocks: str, notes: str, roster: str = "{}\n"
+) -> None:
     (root / "blocks" / "demo.md").write_text(blocks, encoding="utf-8")
     (root / "README.md").write_text(notes, encoding="utf-8")
+    (root / "repos.json").write_text(roster, encoding="utf-8")
     git(root, "add", "-A")
     git(
         root,
@@ -72,7 +75,8 @@ def main() -> int:
 
         release(root, "1.0.0", blocks="a rule\n", notes="first\n")
         release(root, "1.1.0", blocks="a changed rule\n", notes="second\n")
-        # Nothing in blocks/ — the release this guard exists to refuse.
+        # Neither path moved. README.md did, and it is mechanism: a change
+        # to it reaches nobody from the tag. The release to refuse.
         release(root, "1.1.1", blocks="a changed rule\n", notes="third\n")
         # Cut after 1.1.1 but sorting below it: the predecessor is 1.0.0 by
         # version order and 1.1.1 by creation order, and its blocks match
@@ -89,11 +93,11 @@ def main() -> int:
             "says there was nothing to compare",
         )
 
-        print("a release that changes nothing under blocks/")
+        print("a release that changes only mechanism")
         result = run(root, "1.1.1")
         check(result.returncode != 0, "exits non-zero")
         check(
-            "byte-identical between 1.1.0 and 1.1.1" in result.stderr,
+            "changed between 1.1.0 and 1.1.1" in result.stderr,
             "names both tags, and the monotonic v2 is not one of them",
         )
 
@@ -101,8 +105,45 @@ def main() -> int:
         result = run(root, "1.0.1")
         check(result.returncode == 0, "exits 0")
         check(
-            "comparing blocks/: 1.0.0 -> 1.0.1" in result.stdout,
+            "comparing blocks/ and repos.json: 1.0.0 -> 1.0.1"
+            in result.stdout,
             "compares against the previous tag in version order",
+        )
+
+        # repos.json says which blocks each repository takes, and apply.yml
+        # reads it out of the release. Giving a repository another block is
+        # therefore a release with nothing in blocks/ — which is exactly the
+        # shape the guard used to refuse, back when it compared one path.
+        print("a release that changes only repos.json")
+        release(
+            root,
+            "1.2.0",
+            blocks="a changed rule\n",
+            notes="third\n",
+            roster='{"repos": {"one": ["demo"]}}\n',
+        )
+        result = run(root, "1.2.0")
+        check(result.returncode == 0, "exits 0")
+        check(
+            "comparing blocks/ and repos.json: 1.1.1 -> 1.2.0"
+            in result.stdout,
+            "compares both paths",
+        )
+
+        print("a release that changes neither path")
+        release(
+            root,
+            "1.2.1",
+            blocks="a changed rule\n",
+            notes="fourth\n",
+            roster='{"repos": {"one": ["demo"]}}\n',
+        )
+        result = run(root, "1.2.1")
+        check(result.returncode != 0, "exits non-zero")
+        check(
+            "blocks/ and repos.json are both byte-identical"
+            in result.stderr,
+            "says both paths are unchanged",
         )
 
         # The guard resolves the previous release out of the tag list, so a
