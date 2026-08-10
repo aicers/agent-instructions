@@ -17,9 +17,29 @@ MAX_WIDTH = 76
 ROOT = Path(__file__).resolve().parent.parent
 CODE_SPAN = re.compile(r"`[^`]*`")
 
+# Repository names that are also ordinary English words. The rule is that
+# a block must not *name a repository*, and for these the plain substring
+# match cannot tell that from a block using the word: `review` joined the
+# roster while blocks were already free to say "reviewer". Naming one of
+# these reads as `aicers/review` or as a code span, so that is what is
+# looked for; the word itself is left alone.
+WORD_LIKE_REPOS = frozenset({"review"})
+
+
+def names_repository(line: str, repo: str, org: str) -> bool:
+    """Does this line name the repository, rather than merely contain it?"""
+    if repo not in WORD_LIKE_REPOS:
+        return repo in line
+    qualified = rf"{re.escape(org)}/{re.escape(repo)}(?![\w-])"
+    if re.search(qualified, line):
+        return True
+    return any(span.strip("`") == repo for span in CODE_SPAN.findall(line))
+
 
 def main() -> int:
-    repos = set(json.loads((ROOT / "repos.json").read_text())["repos"])
+    roster = json.loads((ROOT / "repos.json").read_text())
+    org = roster["org"]
+    repos = set(roster["repos"])
     failures: list[str] = []
 
     for path in sorted((ROOT / "blocks").glob("*.md")):
@@ -60,12 +80,18 @@ def main() -> int:
                     f"'@path' in an imported file as another import. "
                     f"Wrap it in backticks."
                 )
-            for repo in repos:
-                if repo in line:
-                    failures.append(
-                        f"{where}:{number}: mentions the repository "
-                        f"'{repo}'; blocks must be repository-neutral"
-                    )
+            # The markers carry the block's name, and a block may be named
+            # after a repository — the one explaining the pipeline that
+            # drives these repositories is. Which name they may carry was
+            # settled above, against the filename.
+            is_marker = number in (1, len(lines))
+            if not is_marker:
+                for repo in repos:
+                    if names_repository(line, repo, org):
+                        failures.append(
+                            f"{where}:{number}: mentions the repository "
+                            f"'{repo}'; blocks must be repository-neutral"
+                        )
 
     for failure in failures:
         print(failure)
