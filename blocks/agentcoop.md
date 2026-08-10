@@ -1,10 +1,10 @@
 <!-- BEGIN shared:agentcoop -->
 ## AgentCoop
 
-AgentCoop is the pipeline this organization runs over its GitHub issues,
-so its vocabulary turns up in issue bodies and pull request comments
-here — and an agent working in this repository may itself be running
-inside it.
+AgentCoop is the AI agent orchestration system this organization runs
+over its GitHub issues, so its vocabulary turns up in issue bodies and
+pull request comments here — and an agent working in this repository
+may itself be running inside it.
 
 - Two agents do the work. The **author** (Agent A) produces, the
   **reviewer** (Agent B) reviews independently, and the two converge
