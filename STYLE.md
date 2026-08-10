@@ -15,6 +15,26 @@ This is not a style preference. The drift check is a byte comparison; the
 moment a block needs per-repository substitution, it needs a template
 engine, and the check stops being trivially correct.
 
+Tooling every consumer is driven by is the exception, and a narrow one:
+naming it is what makes the text usable, and the text stays byte-identical
+everywhere regardless, which is what the rule is actually protecting. A
+block explaining the pipeline that turns these repositories' issues into
+pull requests has to call it by its name — an agent that meets that name
+in an issue body cannot look it up under a description.
+
+The test is substitution, not vocabulary. If every consumer would carry
+the same sentence, the name is fine; if one of them would need a different
+one, it belongs in that repository's own sections.
+
+The linter matches every name in `repos.json` against every line, and
+exempts two things that would otherwise be false positives. A block's own
+markers carry its name, and a block may be named after a repository, so
+the markers are not searched — which name they may carry is already
+settled against the filename. And a roster name that is also an ordinary
+English word is flagged only when it is org-qualified or sits in a code
+span: `review` became a repository long after blocks were free to say
+"reviewer", and a substring match cannot tell the two apart.
+
 ## What earns its own block
 
 Split by language or ecosystem, never by which features a repository

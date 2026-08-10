@@ -112,7 +112,11 @@ Repository-specific commands, paths, and gates go here.
 Blocks are deliberately repository-neutral, so anything naming a path, a
 product, or a command lives in the repository's own sections. The Rust
 block's certificate-verification rule, for instance, says verification
-lives in one dedicated module and leaves the repository to name it.
+lives in one dedicated module and leaves the repository to name it. The
+exception is tooling every consumer is driven by — the pipeline that turns
+these repositories' issues into pull requests is named, because a block
+explaining it is useless to an agent that met the name in an issue and
+cannot look it up. See [STYLE.md](STYLE.md).
 
 ## Changing a block
 

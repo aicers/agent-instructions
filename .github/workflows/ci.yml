@@ -28,6 +28,9 @@ jobs:
       - name: Test check_release_surface.sh
         run: python3 scripts/test_release_surface.py
 
+      - name: Test lint_blocks.py
+        run: python3 scripts/test_lint_blocks.py
+
       - name: Verify block markers and authoring rules
         run: python3 scripts/lint_blocks.py
 
