@@ -2,18 +2,18 @@
   "org": "aicers",
   "target": "AGENTS.md",
   "repos": {
-    "aimer":           ["workflow", "rust", "changelog"],
-    "bootler":         ["workflow", "rust", "changelog"],
-    "bootroot":        ["workflow", "rust", "changelog"],
-    "multifold":       ["workflow", "rust", "changelog"],
-    "review":          ["workflow", "rust", "changelog"],
-    "review-database": ["workflow", "rust", "changelog"],
-    "review-web":      ["workflow", "rust", "changelog"],
-    "roxyd":           ["workflow", "rust", "changelog"],
-    "review-protocol": ["workflow", "rust", "changelog"],
-    "deploy-core":     ["workflow", "rust", "changelog"],
-    "agentcoop":       ["workflow", "node", "changelog"],
-    "aice-web-next":   ["workflow", "node", "db-migrations", "changelog"],
-    "aimer-web":       ["workflow", "node", "db-migrations", "changelog"]
+    "aimer":           ["workflow", "agentcoop", "rust", "changelog"],
+    "bootler":         ["workflow", "agentcoop", "rust", "changelog"],
+    "bootroot":        ["workflow", "agentcoop", "rust", "changelog"],
+    "multifold":       ["workflow", "agentcoop", "rust", "changelog"],
+    "review":          ["workflow", "agentcoop", "rust", "changelog"],
+    "review-database": ["workflow", "agentcoop", "rust", "changelog"],
+    "review-web":      ["workflow", "agentcoop", "rust", "changelog"],
+    "roxyd":           ["workflow", "agentcoop", "rust", "changelog"],
+    "review-protocol": ["workflow", "agentcoop", "rust", "changelog"],
+    "deploy-core":     ["workflow", "agentcoop", "rust", "changelog"],
+    "agentcoop":       ["workflow", "agentcoop", "node", "changelog"],
+    "aice-web-next":   ["workflow", "agentcoop", "node", "db-migrations", "changelog"],
+    "aimer-web":       ["workflow", "agentcoop", "node", "db-migrations", "changelog"]
   }
 }
