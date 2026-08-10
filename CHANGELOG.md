@@ -25,6 +25,19 @@ rules.
 Below `1.0.0` the grades shift down one: a breaking change bumps MINOR and
 everything else bumps PATCH.
 
+## [0.2.1] - 2026-08-10
+
+### Changed
+
+- The `agentcoop` block calls AgentCoop an orchestration system rather
+  than a pipeline. Its own manual reserves that word for the nine
+  stages one implementation run goes through, and of the three stages
+  the block goes on to describe, only implementation has that shape —
+  design converges in rounds, and verification audits work already
+  merged. The sentence also now says outright that AgentCoop is
+  software, which neither wording did, and says it without naming the
+  form it runs in.
+
 ## [0.2.0] - 2026-08-10
 
 ### Added
@@ -198,6 +211,7 @@ contract has never run in a consumer once.
   and would leave every pull request pinned to one release and filled from
   another. `scripts/test_sync.py` covers it.
 
+[0.2.1]: https://github.com/aicers/agent-instructions/compare/0.2.0...0.2.1
 [0.2.0]: https://github.com/aicers/agent-instructions/compare/0.1.5...0.2.0
 [0.1.5]: https://github.com/aicers/agent-instructions/compare/0.1.4...0.1.5
 [0.1.4]: https://github.com/aicers/agent-instructions/compare/0.1.3...0.1.4
