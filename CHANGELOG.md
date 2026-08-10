@@ -25,6 +25,23 @@ rules.
 Below `1.0.0` the grades shift down one: a breaking change bumps MINOR and
 everything else bumps PATCH.
 
+## [Unreleased]
+
+### Added
+
+- A shared `agentcoop` block says what AgentCoop is: the author and the
+  reviewer agent and how the two converge, what its implementation,
+  design, and verification stages each do, and that the issue is the
+  only input a run is given. That vocabulary is already in these
+  repositories' issues and pull request comments — and AgentCoop
+  injects no instructions of its own, so an agent running inside it
+  reads whatever the repository provides and nothing else.
+- Every repository takes the block. It reaches one only once that
+  repository's `AGENTS.md` carries the `<!-- BEGIN shared:agentcoop -->`
+  and `<!-- END shared:agentcoop -->` pair: nothing upstream can decide
+  where in that file a block belongs, so until the pair is there the
+  apply fails naming the repository and writes nothing.
+
 ## [0.1.5] - 2026-08-09
 
 ### Added
@@ -181,6 +198,7 @@ contract has never run in a consumer once.
   and would leave every pull request pinned to one release and filled from
   another. `scripts/test_sync.py` covers it.
 
+[Unreleased]: https://github.com/aicers/agent-instructions/compare/0.1.5...main
 [0.1.5]: https://github.com/aicers/agent-instructions/compare/0.1.4...0.1.5
 [0.1.4]: https://github.com/aicers/agent-instructions/compare/0.1.3...0.1.4
 [0.1.3]: https://github.com/aicers/agent-instructions/compare/0.1.2...0.1.3
