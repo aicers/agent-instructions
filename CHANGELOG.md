@@ -1,29 +1,8 @@
 # Changelog
 
-This file documents notable changes to the shared instruction blocks and
-to the machinery that delivers them. The format is based on
-[Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
-
-Versions are `MAJOR.MINOR.PATCH`, graded by the review a release demands
-rather than by build compatibility — blocks are prose, and nothing
-downstream compiles:
-
-- **MAJOR** — an existing rule is reversed or removed. Consumers have to
-  check whether their code already violates the new rule.
-- **MINOR** — a rule is added. It applies going forward and does not
-  retroactively invalidate existing code.
-- **PATCH** — wording or structure only; the rule set is unchanged.
-
-A PATCH can still change how an agent behaves. Prompt text is not CSS.
-The grade says how hard to look, nothing more.
-
-Those three are about block content. A change to the interface a consumer
-calls — an input renamed or dropped, a file this repository expects to
-find in a consumer moved — is MAJOR on its own, whatever it does to the
-rules.
-
-Below `1.0.0` the grades shift down one: a breaking change bumps MINOR and
-everything else bumps PATCH.
+This file documents recent notable changes to this project. The format of this
+file is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and
+this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.3.0] - 2026-08-11
 
