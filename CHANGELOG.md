@@ -25,7 +25,18 @@ rules.
 Below `1.0.0` the grades shift down one: a breaking change bumps MINOR and
 everything else bumps PATCH.
 
-## [Unreleased]
+## [0.3.0] - 2026-08-11
+
+### Added
+
+- The `workflow` block says that the marked regions are generated and
+  are not edited in the repository that carries them, and that
+  `.agent-instructions.toml` is source rather than tool output — never
+  ignored, never untracked. Both rules were written only in the pull
+  requests that deliver a release, which are read once; the file an
+  agent actually loads before touching anything said neither. The pin
+  is the one file the drift check cannot do without, and it looks
+  generated to anyone who has not read the repository it comes from.
 
 ### Changed
 
@@ -242,7 +253,7 @@ contract has never run in a consumer once.
   and would leave every pull request pinned to one release and filled from
   another. `scripts/test_sync.py` covers it.
 
-[Unreleased]: https://github.com/aicers/agent-instructions/compare/0.2.1...main
+[0.3.0]: https://github.com/aicers/agent-instructions/compare/0.2.1...0.3.0
 [0.2.1]: https://github.com/aicers/agent-instructions/compare/0.2.0...0.2.1
 [0.2.0]: https://github.com/aicers/agent-instructions/compare/0.1.5...0.2.0
 [0.1.5]: https://github.com/aicers/agent-instructions/compare/0.1.4...0.1.5
