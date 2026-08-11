@@ -32,6 +32,18 @@ name: Shared instruction-block drift
 # The pin is also the record of which release a repository carries. It is
 # not duplicated in a comment anywhere: it decides what the comparison
 # runs against, so unlike a comment it cannot be wrong.
+#
+# One thing here warns rather than fails: a pin behind the latest release.
+# That is a repository whose scheduled apply may have been switched off,
+# which GitHub does silently after 60 days of quiet, and it is the pin
+# doing its job rather than anything being wrong with the pull request in
+# front of the reader.
+#
+# Still no inputs, and no `permissions:` block. Resolving the latest
+# release and listing the caller's branches both need reads a caller's
+# default token already has -- and a called workflow can only narrow what
+# the caller granted, so a grant restated here could only conflict with a
+# correct caller.
 
 on:
   workflow_call:
@@ -75,6 +87,60 @@ jobs:
           pin=$(python3 .agent-instructions/scripts/pin_file.py read .)
           echo "$pin"
           echo "$pin" >> "$GITHUB_OUTPUT"
+
+      # A schedule can stop without anybody noticing. GitHub disables a
+      # scheduled workflow in a repository with 60 days of no activity and
+      # says nothing about it -- no failed run, no notification, nothing on
+      # any pull request -- so a quiet repository stops proposing releases
+      # to itself and the only symptom is the absence of pull requests
+      # nobody was expecting. This runs on every pull request in every
+      # consumer and already knows the pin, so it is where that becomes
+      # visible.
+      #
+      # It warns and does not fail, and nothing below depends on it. Going
+      # red because a release exists upstream would break pull requests
+      # that have nothing to do with the instructions, which is what the
+      # pin exists to prevent, and a check that cries wolf gets ignored.
+      #
+      # Before the comparison rather than after it, so a repository whose
+      # blocks are also out of date still gets told which release it is
+      # missing.
+      #
+      # `continue-on-error` because the step must not decide the job even
+      # when it is the step that broke. The two things it asks of the
+      # network are handled below, but a run that fails for some third
+      # reason would turn a pull request red over an upstream release --
+      # the exact outcome this warns instead of doing. The failure is
+      # still visible in the run; it just does not travel.
+      - name: Warn when the pin is behind the latest release
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PIN: ${{ steps.pin.outputs.ref }}
+        run: |
+          set -uo pipefail
+          # "Latest release", not "latest tag", for apply.yml's reason: a
+          # tag that was never released has not passed the release-surface
+          # guard. It is also what the apply would deliver, so this names
+          # the release dispatching that job would actually bring.
+          if ! latest=$(gh release view --repo aicers/agent-instructions \
+                          --json tagName --jq .tagName); then
+            echo "could not resolve the latest release; nothing to compare"
+            exit 0
+          fi
+          # The branches say whether the apply ran. `--heads` with a
+          # pattern prints nothing and exits 0 when none matches, which is
+          # the ordinary case in a repository that is up to date. A listing
+          # that could not be fetched is read as no branches: the worst it
+          # does is warn a repository whose update is already waiting, and
+          # a warning is not a red build.
+          if ! branches=$(git ls-remote --heads origin \
+                            'shared-instructions/*'); then
+            branches=""
+          fi
+          printf '%s\n' "$branches" |
+            python3 .agent-instructions/scripts/check_drift.py \
+              "$PIN" "$latest"
 
       - name: Check out the pinned blocks
         uses: actions/checkout@v4

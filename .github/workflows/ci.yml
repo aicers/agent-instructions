@@ -34,6 +34,9 @@ jobs:
       - name: Test lint_blocks.py
         run: python3 scripts/test_lint_blocks.py
 
+      - name: Test check_drift.py
+        run: python3 scripts/test_check_drift.py
+
       - name: Verify block markers and authoring rules
         run: python3 scripts/lint_blocks.py
 

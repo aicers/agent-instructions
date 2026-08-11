@@ -4,6 +4,24 @@ This file documents recent notable changes to this project. The format of this
 file is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- The drift check warns, on every pull request in a consumer, when the
+  repository's pin is behind the latest release, naming both and the
+  workflow to dispatch. A scheduled apply can stop without anybody
+  noticing — GitHub disables one silently in a repository nobody has
+  touched for 60 days — and the only symptom until now was the absence
+  of pull requests nobody was expecting. It warns rather than fails:
+  going red because a release exists upstream would break pull requests
+  that have nothing to do with the instructions, which is what pinning
+  is for. It says nothing when the repository is current, or when the
+  branch `shared-instructions/<latest release>` is already pushed, since
+  the apply having run and its pull request sitting unmerged is a
+  different situation. `scripts/check_drift.py` holds the comparison and
+  `scripts/test_check_drift.py` covers it.
+
 ## [0.3.0] - 2026-08-11
 
 ### Added
@@ -232,6 +250,7 @@ contract has never run in a consumer once.
   and would leave every pull request pinned to one release and filled from
   another. `scripts/test_sync.py` covers it.
 
+[Unreleased]: https://github.com/aicers/agent-instructions/compare/0.3.0...main
 [0.3.0]: https://github.com/aicers/agent-instructions/compare/0.2.1...0.3.0
 [0.2.1]: https://github.com/aicers/agent-instructions/compare/0.2.0...0.2.1
 [0.2.0]: https://github.com/aicers/agent-instructions/compare/0.1.5...0.2.0
