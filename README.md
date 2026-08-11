@@ -151,7 +151,36 @@ cannot look it up. See [STYLE.md](STYLE.md).
    first refuses a tag whose `blocks/` tree is byte-identical to the
    previous release's, since that release would give every consumer a
    pull request that moves a pin and changes no rule.
-5. Wait. Each consumer applies the release to itself on a schedule and
+5. Check what each consumer is carrying. The roster comes from
+   `repos.json`, so nothing here needs editing when a repository is
+   added:
+
+   ```sh
+   latest=$(gh release view --repo aicers/agent-instructions \
+              --json tagName --jq .tagName)
+   roster='import json; print(*json.load(open("repos.json"))["repos"])'
+   for repo in $(python3 -c "$roster"); do
+     pin=$(gh api "repos/aicers/$repo/contents/.agent-instructions.toml" \
+             --jq .content | base64 -d \
+           | sed -n 's/^ref *= *"\(.*\)"/\1/p')
+     [ "$pin" = "$latest" ] || echo "$repo is on $pin"
+   done
+   ```
+
+   Every repository will be behind for a day or two, which is the
+   schedule working. What this is looking for is one that stayed behind
+   across releases: that repository's apply has stopped, and GitHub
+   disables a schedule in a repository nobody has touched for 60 days
+   without saying so. Dispatch its `Update shared instructions` workflow,
+   or run `scripts/sync.sh <tag> <repo>`, and the schedule is running
+   again.
+
+   This is the only check that sees such a repository while it is still
+   quiet. The warning on a pull request, below, needs a pull request —
+   and a repository quiet enough to lose its schedule is not producing
+   any, until somebody starts work there and reads a stale `AGENTS.md`
+   before anything says so.
+6. Wait. Each consumer applies the release to itself on a schedule and
    opens its own pull request; review and merge those.
 
 ## Version scheme
