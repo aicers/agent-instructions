@@ -16,10 +16,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   of pull requests nobody was expecting. It warns rather than fails:
   going red because a release exists upstream would break pull requests
   that have nothing to do with the instructions, which is what pinning
-  is for. It says nothing when the repository is current, or when the
-  branch `shared-instructions/<latest release>` is already pushed, since
-  the apply having run and its pull request sitting unmerged is a
-  different situation. `scripts/check_drift.py` holds the comparison and
+  is for. It says nothing when the repository is current, when the
+  branch `shared-instructions/<latest release>` is already pushed —
+  since the apply having run and its pull request sitting unmerged is a
+  different situation — or when that branch listing could not be
+  fetched, which rules nothing out and so is not read as no branches.
+  `scripts/check_drift.py` holds the comparison and
   `scripts/test_check_drift.py` covers it.
 
 ## [0.3.0] - 2026-08-11

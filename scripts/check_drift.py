@@ -2,7 +2,8 @@
 """Say, on a consumer's pull request, that its pin is behind the latest
 release.
 
-    check_drift.py <pin> <latest release> < <branch listing>
+    check_drift.py [--branches-unknown] <pin> <latest release>
+        < <branch listing>
 
 `check-drift.yml` reads the pin and resolves the latest release, and
 hands both here with `git ls-remote --heads origin 'shared-instructions/*'`
@@ -25,7 +26,7 @@ proposing releases to itself, and the only symptom is the absence of pull
 requests nobody was expecting on a particular day. `workflow_dispatch`
 recovers it, but only for somebody who already suspects.
 
-Silent in two cases, both of which would otherwise make the warning
+Silent in three cases, all of which would otherwise make the warning
 furniture:
 
 - The repository is on the latest release. Nothing to say.
@@ -33,6 +34,13 @@ furniture:
   repository. The apply pushed it, so the schedule ran; somebody has not
   merged the pull request yet, which is a different situation and one
   this warning cannot help with.
+- The listing could not be read, which the driver says with
+  `--branches-unknown`. An empty listing means the apply pushed nothing;
+  an unreadable one rules nothing out, and reading the second as the
+  first warns the repository whose update branch may be sitting right
+  there. Quiet loses one run's worth of a warning that repeats on every
+  pull request; the alternative is the false positive the branch case
+  exists to prevent.
 
 The branch rather than the pull request, though the pull request is what
 a reader would think of. Listing pull requests needs `pull-requests:
@@ -124,6 +132,11 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("pin")
     parser.add_argument("latest", metavar="latest-release")
+    parser.add_argument(
+        "--branches-unknown",
+        action="store_true",
+        help="the branch listing could not be fetched; it is not empty",
+    )
     args = parser.parse_args()
 
     # Read the listing before deciding anything, including in the case
@@ -142,6 +155,19 @@ def main() -> int:
         return 0
 
     proposed = BRANCH.format(tag=args.latest)
+    if args.branches_unknown:
+        # Nothing here can tell whether `proposed` is on the repository,
+        # and the warning is only right when it is not. It repeats on
+        # every pull request, so staying quiet costs one run of a message
+        # that comes back; warning wrongly costs the reader's trust in it,
+        # which does not.
+        print(
+            f"pinned to {args.pin}, and this repository's branches could"
+            f" not be listed: not warning, since {proposed} may already"
+            " be there"
+        )
+        return 0
+
     if proposed in branches(listing):
         print(
             f"pinned to {args.pin}, and {proposed} is already on this"

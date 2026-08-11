@@ -304,7 +304,7 @@ wolf stops being read, including about the drift it was written to catch.
 Whether being several releases behind should eventually fail is a question
 for when there is evidence about how long a repository actually lags.
 
-It is silent in two cases, because a warning that is always there is
+It is silent in three cases, because a warning that is always there is
 furniture. A repository on the latest release sees nothing. So does one
 where the branch `shared-instructions/<latest release>` already exists:
 the apply pushed it, so the schedule ran, and an update pull request
@@ -315,6 +315,15 @@ what a reader would think of first — listing pull requests needs
 token, and every consumer's `ci.yml` would therefore have to grant it by
 hand, in the one directory nothing upstream may write. A branch is a ref,
 which `contents: read` already covers, and it answers the same question.
+
+The third is the run that could not list those branches at all. An empty
+listing says the apply pushed nothing; an unreadable one says nothing at
+all, and treating the second as the first warns the repository whose
+update branch may be sitting right there — during a hiccup, on a pull
+request that has nothing to do with any of this. The warning comes back
+on the next pull request, so the run that skips it loses nothing
+permanent. The same goes for a latest release that could not be resolved:
+the step says so in the log and leaves the pull request alone.
 
 The comparison itself is `scripts/check_drift.py`, driven from the
 workflow the way `pin_file.py` and `render.py` already are, and covered by

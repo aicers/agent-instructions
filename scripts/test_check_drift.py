@@ -149,6 +149,22 @@ def main() -> int:
     result = run("0.1.0", "0.3.0", branches="\n")
     check(result.stdout.startswith("::warning::"), "warns")
 
+    # `git ls-remote` failing is not the repository having no update
+    # branches, and the two must not arrive here as the same thing: a
+    # remote or authentication hiccup would otherwise warn a repository
+    # whose apply pushed 0.3.0 an hour ago, which is the false positive
+    # the branch case exists to prevent. The warning repeats on every
+    # pull request, so a run that skips it loses nothing that does not
+    # come back.
+    print("a repository whose branch listing could not be read")
+    result = run("--branches-unknown", "0.1.0", "0.3.0")
+    check(result.returncode == 0, "exits 0")
+    check("::warning::" not in result.stdout, "says nothing")
+    check(
+        "shared-instructions/0.3.0" in result.stdout,
+        "says in the log which branch it could not rule out",
+    )
+
     # Driven the way check-drift.yml drives it: a shell pipeline under
     # `pipefail`. Every outcome has to drain the listing, because exiting
     # with the pipe still full leaves the writer on the other end filling
@@ -167,10 +183,19 @@ def main() -> int:
     # warning -- the one branch that still has something to print after
     # draining a full pipe -- would go through this untested under the name
     # of being covered.
-    for pin, listed, warns, description in (
-        ("0.3.0", flood + CURRENT, False, "current"),
-        ("0.1.0", flood, True, "behind"),
-        ("0.2.0", flood + CURRENT, False, "behind with its branch already pushed"),
+    for flags, pin, listed, warns, description in (
+        ((), "0.3.0", flood + CURRENT, False, "current"),
+        ((), "0.1.0", flood, True, "behind"),
+        ((), "0.2.0", flood + CURRENT, False, "behind with its branch already pushed"),
+        # The path that never looks at the listing at all, which is
+        # exactly the one that would leave it unread in the pipe.
+        (
+            ("--branches-unknown",),
+            "0.1.0",
+            flood,
+            False,
+            "behind with the listing unreadable",
+        ),
     ):
         with tempfile.NamedTemporaryFile("w", suffix=".txt") as listing:
             listing.write(listed)
@@ -179,11 +204,12 @@ def main() -> int:
                 [
                     "bash",
                     "-c",
-                    'set -uo pipefail; cat "$1" | "$2" "$3" "$4" "$5"',
+                    'set -uo pipefail; cat "$1" | "$2" "$3" "${@:4}"',
                     "check_drift",
                     listing.name,
                     sys.executable,
                     str(CHECK),
+                    *flags,
                     pin,
                     "0.3.0",
                 ],

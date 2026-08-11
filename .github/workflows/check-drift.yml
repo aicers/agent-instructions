@@ -130,17 +130,26 @@ jobs:
           fi
           # The branches say whether the apply ran. `--heads` with a
           # pattern prints nothing and exits 0 when none matches, which is
-          # the ordinary case in a repository that is up to date. A listing
-          # that could not be fetched is read as no branches: the worst it
-          # does is warn a repository whose update is already waiting, and
-          # a warning is not a red build.
+          # the ordinary case in a repository that is up to date -- so a
+          # non-zero exit here really is a listing that could not be
+          # fetched, and that is a different thing from an empty one. An
+          # empty listing says the apply pushed nothing; an unreadable one
+          # says nothing at all, and passing it off as empty warns the
+          # repository whose update branch may be sitting right there.
+          # `--branches-unknown` tells the script which it got; it stays
+          # quiet for that one run rather than crying wolf.
+          unknown=""
           if ! branches=$(git ls-remote --heads origin \
                             'shared-instructions/*'); then
+            echo "could not list this repository's branches"
             branches=""
+            unknown="--branches-unknown"
           fi
+          # $unknown is that flag or the empty string, and is meant to
+          # split away to nothing when it is the empty string.
           printf '%s\n' "$branches" |
             python3 .agent-instructions/scripts/check_drift.py \
-              "$PIN" "$latest"
+              $unknown "$PIN" "$latest"
 
       - name: Check out the pinned blocks
         uses: actions/checkout@v4
