@@ -40,6 +40,7 @@ scripts/
   apply_blocks.py bring one repository up to a release: apply, retire, pin
   sync.sh         fan out apply_blocks.py to every repository at once
   lint_blocks.py  enforce the authoring rules in STYLE.md
+  check_drift.py  warn when a consumer's pin is behind the latest release
   check_release_surface.sh  refuse a release with nothing in it
   test_*.py       tests for the scripts above, run in CI
 STYLE.md        how to write a block
@@ -276,6 +277,59 @@ each consumer writes only to itself, with a token GitHub issues it for the
 run and nobody has to manage. And a consumer can no longer lag silently —
 the schedule proposes the release whether or not anyone remembered.
 
+### A stopped schedule shows up on a pull request
+
+A disabled schedule is invisible on its own: no failed run, no
+notification, and the only symptom is the absence of pull requests nobody
+was expecting on a particular day. `workflow_dispatch` recovers it, but
+only for somebody who already suspects it stopped.
+
+So `check-drift.yml` — which runs on every pull request in every consumer,
+and already reads the pin — resolves the latest release too, and warns
+when the pin is behind it:
+
+> **Warning:** This repository carries shared instruction blocks from
+> aicers/agent-instructions 0.1.0, and the latest release is 0.3.0. Run
+> the "Update shared instructions" workflow from this repository's Actions
+> tab to get the pull request that updates them. Nothing in this pull
+> request is wrong: the weekly job that would have proposed 0.3.0 may have
+> stopped, which GitHub does silently to a schedule in a repository nobody
+> has touched for 60 days.
+
+A `::warning::` annotation, which appears on the pull request and in the
+run summary. **The check still passes.** Failing because a release exists
+upstream would break pull requests that have nothing to do with the
+instructions, which is the thing pinning is for — and a check that cries
+wolf stops being read, including about the drift it was written to catch.
+Whether being several releases behind should eventually fail is a question
+for when there is evidence about how long a repository actually lags.
+
+It is silent in three cases, because a warning that is always there is
+furniture. A repository on the latest release sees nothing. So does one
+where the branch `shared-instructions/<latest release>` already exists:
+the apply pushed it, so the schedule ran, and an update pull request
+sitting unmerged is a different situation that this warning cannot help
+with. The branch rather than the pull request, though the pull request is
+what a reader would think of first — listing pull requests needs
+`pull-requests: read`, a called workflow can only narrow the caller's
+token, and every consumer's `ci.yml` would therefore have to grant it by
+hand, in the one directory nothing upstream may write. A branch is a ref,
+which `contents: read` already covers, and it answers the same question.
+
+The third is the run that could not list those branches at all. An empty
+listing says the apply pushed nothing; an unreadable one says nothing at
+all, and treating the second as the first warns the repository whose
+update branch may be sitting right there — during a hiccup, on a pull
+request that has nothing to do with any of this. The warning comes back
+on the next pull request, so the run that skips it loses nothing
+permanent. The same goes for a latest release that could not be resolved:
+the step says so in the log and leaves the pull request alone.
+
+The comparison itself is `scripts/check_drift.py`, driven from the
+workflow the way `pin_file.py` and `render.py` already are, and covered by
+`scripts/test_check_drift.py`. Logic written inline in the YAML would have
+nowhere to be tested from.
+
 ## The urgent path
 
 `scripts/sync.sh` is the same apply, driven from a maintainer's
@@ -359,6 +413,11 @@ pull request was never merged.
 A caller with nothing to pass is a caller nothing upstream ever has to
 rewrite, which is what keeps the apply out of `.github/workflows/`. It
 also leaves one source for each value rather than two that can disagree.
+
+One thing it warns about rather than fails on: a pin behind the latest
+release, which is how a stopped schedule becomes visible: [A stopped
+schedule shows up on a pull
+request](#a-stopped-schedule-shows-up-on-a-pull-request), above.
 
 `ref` is a release tag, and the file is required — a repository without
 one fails the check rather than being read as carrying no blocks, which
