@@ -36,7 +36,7 @@ blocks/         the shared regions, one file per block
 repos.json      which repository consumes which blocks
 scripts/
   render.py       apply, verify, list, or retire a block in one file
-  pin_file.py     read or write a consumer's .agents/instructions.toml
+  pin_file.py     read or write a consumer's .agent-instructions.toml
   apply_blocks.py bring one repository up to a release: apply, retire, pin
   sync.sh         fan out apply_blocks.py to every repository at once
   lint_blocks.py  enforce the authoring rules in STYLE.md
@@ -75,7 +75,7 @@ themselves do not load — Claude Code strips block-level HTML comments
 before injecting the text, which is why they are HTML comments. They
 cost no context and the agent never sees them.
 
-One more file, `.agents/instructions.toml`, records which release of this
+One more file, `.agent-instructions.toml`, records which release of this
 repository the copies came from and which blocks they are:
 
 ```toml
@@ -89,6 +89,19 @@ what it *does* carry. It sits outside `.github/` because nothing about it
 is GitHub's, and it has to sit outside `.github/workflows/` — that is the
 one directory a repository's own automation may not write, and keeping the
 pin out of it is what spares every consumer a credential of its own.
+
+It was `.agents/instructions.toml` before this. `.agents/` is a generic
+name in a namespace where every tool marks its own — `.claude/`,
+`.cursor/`, `.gemini/` — which left it open to a later tool claiming it,
+and open to being read as tool output and added to a `.gitignore`. The
+name now says whose the file is, and a single file has no directory
+anyone can ignore wholesale.
+
+`pin_file.py` still reads the old path when a repository has only that
+one, and every write moves the repository off it. So a consumer migrates
+inside whatever release its apply was already delivering, with nothing
+for anyone there to do. The fallback comes out once no repository is on
+the old path, in its own release.
 
 Inside `AGENTS.md`, the shared regions are delimited by markers and
 everything outside them belongs to the repository:
@@ -196,7 +209,7 @@ jobs:
 No inputs and no secrets. The workflow resolves the latest release, reads
 `repos.json` out of it to find which blocks this repository should carry,
 rewrites the marked regions, drops any block that list no longer names,
-writes the release and the list into `.agents/instructions.toml`, and
+writes the release and the list into `.agent-instructions.toml`, and
 opens one pull request on `shared-instructions/<release>`. A repository
 already on the latest release gets none, and a second run against an
 unchanged repository neither opens a pull request nor rewrites the branch
@@ -338,7 +351,7 @@ jobs:
 ```
 
 No `with:` block: the release to compare against and the blocks to compare
-both come from the repository's `.agents/instructions.toml`. It fails when
+both come from the repository's `.agent-instructions.toml`. It fails when
 a repository's copy differs from this repository at that release — whether
 because someone edited a generated region locally, or because an update
 pull request was never merged.
@@ -392,7 +405,7 @@ what makes that the simpler answer rather than a compromise.
    comments are stripped before the text reaches context — and it does
    not interfere with the import, which was measured rather than
    assumed.
-4. Create its `.agents/instructions.toml`:
+4. Create its `.agent-instructions.toml`:
 
    ```toml
    ref = "0.1.0"

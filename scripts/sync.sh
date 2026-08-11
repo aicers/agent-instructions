@@ -14,7 +14,7 @@
 #
 # <tag> is a release tag of this repository, already pushed. Each
 # consuming repository gets its blocks rewritten and its
-# .agents/instructions.toml moved to that tag, in one pull request on
+# .agent-instructions.toml moved to that tag, in one pull request on
 # <github-username>/instructions-<tag>. Pass repository names to limit
 # the fan-out; the default is every repository in repos.json.
 #
@@ -123,7 +123,12 @@ sys.exit(0 if sys.argv[2] in json.load(open(sys.argv[1]))["repos"] else 1)' \
 
   blocks=$(python3 "$root/scripts/pin_file.py" read "$clone" blocks)
 
-  if git -C "$clone" diff --quiet; then
+  # `status --porcelain` rather than `diff --quiet`, which reports on
+  # tracked files only. A repository being moved onto a new pin path, or
+  # onboarded onto one it has never had, differs from the release in a
+  # file git is not yet watching -- and reporting that as "already
+  # current" would skip exactly the repository that needed the run.
+  if [[ -z $(git -C "$clone" status --porcelain) ]]; then
     echo "    already current, no pull request"
     skipped=$((skipped + 1))
     continue
@@ -131,12 +136,17 @@ sys.exit(0 if sys.argv[2] in json.load(open(sys.argv[1]))["repos"] else 1)' \
 
   if $dry_run; then
     git -C "$clone" --no-pager diff --stat
+    git -C "$clone" status --porcelain --untracked-files=all \
+      | grep '^??' || true
     opened=$((opened + 1))
     continue
   fi
 
   git -C "$clone" switch -c "$branch" --quiet
-  git -C "$clone" commit -aqm "Update shared instruction blocks to $label
+  # `add -A` for the same reason: `commit -a` would leave an untracked pin
+  # behind and push blocks with nothing recording which release they are.
+  git -C "$clone" add -A
+  git -C "$clone" commit -qm "Update shared instruction blocks to $label
 
 Synced from $org/agent-instructions at $label, which the drift check is
 now pinned to. Do not edit the marked blocks in this repository; change

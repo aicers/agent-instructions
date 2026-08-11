@@ -16,7 +16,7 @@ name: Apply shared instruction blocks
 #
 # No inputs and no secrets. It rewrites the caller's marked blocks from
 # the latest release of aicers/agent-instructions, records that release
-# and the blocks in the caller's `.agents/instructions.toml`, and opens
+# and the blocks in the caller's `.agent-instructions.toml`, and opens
 # one pull request. A caller already on the latest release gets nothing.
 #
 # Which blocks the caller takes is read from `repos.json` in the release,
@@ -146,10 +146,9 @@ jobs:
                      read . blocks)
           echo "blocks=$blocks" >> "$GITHUB_OUTPUT"
 
-      # Both checkouts sit inside the caller's working tree. Nothing below
-      # stages an untracked path, but leaving them there makes that a
-      # detail of how the commit is built rather than a fact about the
-      # tree.
+      # Both checkouts sit inside the caller's working tree, and the commit
+      # below stages every change in it. Removing them is what keeps that
+      # safe: the tree then holds nothing this job did not write.
       - name: Remove the checkouts
         run: rm -rf .agent-instructions .agent-instructions-blocks
 
@@ -179,7 +178,14 @@ jobs:
             "repository's drift check is now pinned to. Do not edit the" \
             "marked blocks here; change them upstream and cut a release." \
             > "$RUNNER_TEMP/commit-message.txt"
-          git commit -q -a -F "$RUNNER_TEMP/commit-message.txt"
+          # `add -A` rather than `commit -a`, which stages changes to
+          # tracked files only. The pin is an untracked path in a
+          # repository being moved onto it, and a repository being
+          # onboarded has never tracked it at all -- so `commit -a` would
+          # push the rewritten blocks with no pin beside them, and the
+          # drift check would then fail on a file it cannot read.
+          git add -A
+          git commit -q -F "$RUNNER_TEMP/commit-message.txt"
           git push -q origin "HEAD:refs/heads/$BRANCH"
           echo "pushed $(git rev-parse --short HEAD) to $BRANCH"
 
@@ -220,7 +226,7 @@ jobs:
           # The pull-request body is not wrapped: GitHub renders it as
           # Markdown, so hard line breaks would show up in the rendering.
           printf '%s\n' \
-            "Applied from \`aicers/agent-instructions\` at \`$TAG\` by its \`apply.yml\` reusable workflow, which also moved this repository's pin in \`.agents/instructions.toml\`." \
+            "Applied from \`aicers/agent-instructions\` at \`$TAG\` by its \`apply.yml\` reusable workflow, which also moved this repository's pin in \`.agent-instructions.toml\`." \
             "" \
             "Blocks in this pull request: $BLOCKS" \
             "" \

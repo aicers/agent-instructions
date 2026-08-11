@@ -11,7 +11,7 @@ name: Shared instruction-block drift
 # it carries.
 #
 # Which release that is, and which blocks it has, come from the caller's
-# `.agents/instructions.toml`:
+# `.agent-instructions.toml`:
 #
 #   ref = "0.1.0"
 #   blocks = ["workflow", "rust"]
