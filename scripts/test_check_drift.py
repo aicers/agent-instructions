@@ -161,13 +161,19 @@ def main() -> int:
         f"{index:040x}\trefs/heads/shared-instructions/9.9.{index}\n"
         for index in range(4096)
     )
-    for pin, description in (
-        ("0.3.0", "current"),
-        ("0.1.0", "behind"),
-        ("0.2.0", "behind with its branch already pushed"),
+    # A listing per case, since the tail decides which branch of the script
+    # runs. Handing every case one that carries `shared-instructions/0.3.0`
+    # would route the behind case to the already-pushed path too, and the
+    # warning -- the one branch that still has something to print after
+    # draining a full pipe -- would go through this untested under the name
+    # of being covered.
+    for pin, listed, warns, description in (
+        ("0.3.0", flood + CURRENT, False, "current"),
+        ("0.1.0", flood, True, "behind"),
+        ("0.2.0", flood + CURRENT, False, "behind with its branch already pushed"),
     ):
         with tempfile.NamedTemporaryFile("w", suffix=".txt") as listing:
-            listing.write(flood + CURRENT)
+            listing.write(listed)
             listing.flush()
             piped = subprocess.run(
                 [
@@ -185,6 +191,11 @@ def main() -> int:
                 text=True,
             )
         check(piped.returncode == 0, f"leaves the pipeline at 0 when {description}")
+        check(
+            piped.stdout.startswith("::warning::") == warns,
+            f"still takes the {'warning' if warns else 'quiet'} path"
+            f" when {description}",
+        )
 
     print()
     if failures:
