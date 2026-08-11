@@ -14,7 +14,7 @@ driver's business.
 Applies each of those blocks into `<repo-root>/<target>`, drops any block
 the repository carries that the release no longer has or `repos.json` no
 longer lists, and records the release and the list in
-`<repo-root>/.agents/instructions.toml`. It writes that file and the
+`<repo-root>/.agent-instructions.toml`. It writes that file and the
 target, and nothing else — a `target` that resolves outside the
 repository is refused rather than followed.
 

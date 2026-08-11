@@ -25,6 +25,37 @@ rules.
 Below `1.0.0` the grades shift down one: a breaking change bumps MINOR and
 everything else bumps PATCH.
 
+## [Unreleased]
+
+### Changed
+
+- The pin moved from `.agents/instructions.toml` to
+  `.agent-instructions.toml` at the repository root. `.agents/` is a
+  generic name in a namespace where every tool marks its own —
+  `.claude/`, `.cursor/`, `.gemini/` — which left it open to a later
+  tool claiming it, and open to being read as tool output and added to
+  a `.gitignore`. The name now says whose the file is, and a single
+  file has no directory anyone can ignore wholesale.
+- Nothing has to be done in a consuming repository. The reader still
+  accepts the old path where that is the only one present, and every
+  write moves the repository onto the new one and deletes the old, so
+  a consumer migrates inside whatever release its apply was already
+  delivering. The fallback comes out once no repository is on the old
+  path.
+
+### Fixed
+
+- The apply and the fan-out commit what they wrote rather than only
+  what git was already tracking. Both staged with `commit -a`, which
+  covers modifications to tracked files and not a new path, so
+  delivering a release to a repository that had to gain a file — the
+  moved pin, or any pin at all in a repository being onboarded — would
+  have pushed the rewritten blocks with no pin beside them, and the
+  drift check would then have failed on a file it could not read. The
+  fan-out also decided "already current" with `diff --quiet`, which is
+  blind to the same case and would have skipped exactly the repository
+  that needed the run.
+
 ## [0.2.1] - 2026-08-10
 
 ### Changed
@@ -211,6 +242,7 @@ contract has never run in a consumer once.
   and would leave every pull request pinned to one release and filled from
   another. `scripts/test_sync.py` covers it.
 
+[Unreleased]: https://github.com/aicers/agent-instructions/compare/0.2.1...main
 [0.2.1]: https://github.com/aicers/agent-instructions/compare/0.2.0...0.2.1
 [0.2.0]: https://github.com/aicers/agent-instructions/compare/0.1.5...0.2.0
 [0.1.5]: https://github.com/aicers/agent-instructions/compare/0.1.4...0.1.5

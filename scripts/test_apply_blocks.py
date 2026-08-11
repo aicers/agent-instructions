@@ -109,14 +109,12 @@ def consumer(root: Path, agents: str = AGENTS, pin: str | None = PIN) -> Path:
     root.mkdir(parents=True)
     (root / "AGENTS.md").write_text(agents, encoding="utf-8")
     if pin is not None:
-        (root / ".agents").mkdir()
-        pin_path = root / ".agents" / "instructions.toml"
-        pin_path.write_text(pin, encoding="utf-8")
+        (root / ".agent-instructions.toml").write_text(pin, encoding="utf-8")
     return root
 
 
 def pin_of(root: Path) -> str:
-    return (root / ".agents" / "instructions.toml").read_text(encoding="utf-8")
+    return (root / ".agent-instructions.toml").read_text(encoding="utf-8")
 
 
 def run(
@@ -228,6 +226,37 @@ def main() -> int:
             "changes nothing",
         )
 
+        # The pin moved out of `.agents/`, and a repository is
+        # meant to arrive on the new path inside whatever release the apply
+        # was already delivering -- with nothing for anyone in the consumer
+        # to do about it.
+        print("a repository still on the superseded pin path")
+        legacy = tmp / "legacy"
+        legacy.mkdir(parents=True)
+        (legacy / "AGENTS.md").write_text(AGENTS, encoding="utf-8")
+        (legacy / ".agents").mkdir()
+        (legacy / ".agents" / "instructions.toml").write_text(
+            PIN, encoding="utf-8"
+        )
+        result = run(
+            release(tmp / "legacy-upstream", {"legacy": ["demo"]}),
+            legacy,
+            "0.2.0",
+        )
+        check(result.returncode == 0, "exits 0")
+        check(
+            "- current text" in (legacy / "AGENTS.md").read_text(
+                encoding="utf-8"
+            ),
+            "the blocks are applied",
+        )
+        check((legacy / ".agent-instructions.toml").is_file(),
+              "the pin lands on the current path")
+        check(
+            not (legacy / ".agents").exists(),
+            "and the old file goes, rather than both surviving",
+        )
+
         print("a caller passing owner/name, as github.repository does")
         owned = consumer(tmp / "owned")
         result = run(
@@ -253,7 +282,7 @@ def main() -> int:
         )
         check(result.returncode != 0, "exits non-zero")
         check(
-            ".agents/instructions.toml" in result.stderr
+            ".agent-instructions.toml" in result.stderr
             and 'ref = "' in result.stderr,
             "names the file and what to put in it",
         )
@@ -262,7 +291,7 @@ def main() -> int:
             "nothing is written",
         )
         check(
-            not (unpinned / ".agents").exists(),
+            not (unpinned / ".agent-instructions.toml").exists(),
             "and the file is not created behind the message",
         )
 
@@ -401,8 +430,8 @@ def main() -> int:
 
         print("a repository with no target file")
         headless = tmp / "headless"
-        (headless / ".agents").mkdir(parents=True)
-        (headless / ".agents" / "instructions.toml").write_text(
+        headless.mkdir(parents=True)
+        (headless / ".agent-instructions.toml").write_text(
             PIN, encoding="utf-8"
         )
         check(

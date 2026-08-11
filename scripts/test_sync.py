@@ -137,6 +137,10 @@ def consumer(origins: Path, work: Path) -> Path:
     """A bare repository standing in for a consumer on GitHub."""
     work.mkdir(parents=True)
     (work / "AGENTS.md").write_text(AGENTS, encoding="utf-8")
+    # Deliberately the superseded path. A consumer arrives on the current
+    # through an ordinary apply, so the fan-out has to carry both halves of
+    # that move -- the new file added and the old one deleted -- in the
+    # commit it was already making.
     (work / ".agents").mkdir()
     (work / ".agents" / "instructions.toml").write_text(PIN, encoding="utf-8")
     git(work, "init", "-q", ".")
@@ -195,7 +199,12 @@ def main() -> int:
         )
         branch = "tester/instructions-0.1.0"
         pushed = git(bare, "show", f"{branch}:AGENTS.md")
-        pin = git(bare, "show", f"{branch}:.agents/instructions.toml")
+        pin = git(bare, "show", f"{branch}:.agent-instructions.toml")
+        tree = git(bare, "ls-tree", "-r", "--name-only", branch)
+        check(
+            ".agents/instructions.toml" not in tree,
+            "the superseded pin is deleted on the branch, not left beside it",
+        )
         check(
             "- the rule as the release has it" in pushed,
             "the pushed blocks are the tag's",

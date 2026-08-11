@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read and write a consuming repository's `.agents/instructions.toml`.
+"""Read and write a consuming repository's `.agent-instructions.toml`.
 
     ref = "0.1.0"
     blocks = ["workflow", "rust"]
@@ -13,9 +13,21 @@ The file exists so that neither value lives in `.github/workflows/`.
 GitHub refuses a push touching that directory when it is authenticated
 with the default GITHUB_TOKEN, so a pin kept there forced every consumer
 to mint and register a token of its own before the automation could run
-once. Nothing else needed one. `.agents/` rather than `.github/`: only
+once. Nothing else needed one. It is not in `.github/` either: only
 `.github/workflows/` is closed, but this file is not GitHub's — it
 records what the repository carries, and any driver can read it.
+
+It was `.agents/instructions.toml` before this. `.agents/` is a generic
+name in a namespace where every tool marks its own — `.claude/`,
+`.cursor/`, `.gemini/` — which left it open to a future tool claiming it,
+and open to being read as tool output and added to `.gitignore`. The
+name here says whose it is, and a single file has no directory anyone
+can ignore wholesale.
+
+A repository still carrying the old path is read from it and moved off
+it by the next write, so the apply migrates a consumer while delivering
+whatever release it was already delivering. The fallback comes out once
+none is left.
 
     pin_file.py read <repo-root> [ref|blocks]
 
@@ -26,7 +38,8 @@ of them in a shape that would not survive being printed like that.
 
     pin_file.py write <repo-root> <tag> <block>...
 
-replaces it with those two keys.
+replaces it with those two keys, at the current path, and deletes the
+superseded one if the repository still has it.
 
 The standard library reads TOML only on 3.11 and later, and writes none
 at all. Two keys of known shape do not justify a dependency in every
@@ -41,7 +54,8 @@ import re
 import sys
 from pathlib import Path
 
-RELATIVE = Path(".agents") / "instructions.toml"
+RELATIVE = Path(".agent-instructions.toml")
+LEGACY = Path(".agents") / "instructions.toml"
 NAME = re.compile(r"[\w.-]+")
 
 HEADER = """\
@@ -62,7 +76,21 @@ class PinError(Exception):
 
 
 def path_in(root: Path) -> Path:
-    return root / RELATIVE
+    """Where this repository's pin is, for reading.
+
+    The current path wins wherever it exists, so a repository holding both
+    — a half-applied migration, an editor that recreated the old one — is
+    read from the file the last write produced rather than from whichever
+    the filesystem happens to list first. Absent both, the current path is
+    returned so the error names where the file belongs.
+    """
+    current = root / RELATIVE
+    if current.is_file():
+        return current
+    legacy = root / LEGACY
+    if legacy.is_file():
+        return legacy
+    return current
 
 
 def dump(ref: str, blocks: list[str]) -> str:
@@ -83,9 +111,35 @@ def dump(ref: str, blocks: list[str]) -> str:
 
 
 def write(root: Path, ref: str, blocks: list[str]) -> Path:
-    path = path_in(root)
+    """Write the pin, and retire the superseded one in the same call.
+
+    Retiring it here rather than in a driver is what makes the move a
+    consumer never has to do anything about: the apply writes the pin on
+    every release it delivers, so the repository arrives on the new path
+    inside the pull request it was getting anyway. Both drivers stage with
+    `git add -A` for it — `commit -a` covers the deletion and not the new
+    file, which would push the blocks with no pin beside them.
+
+    Both files must never survive together. The reader prefers the new one,
+    so a stale old one would sit there saying a release the repository no
+    longer carries, waiting to be read by anything that looks at the path
+    directly.
+    """
+    path = root / RELATIVE
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(dump(ref, blocks), encoding="utf-8")
+
+    legacy = root / LEGACY
+    if legacy.is_file():
+        legacy.unlink()
+        # The directory held this file alone. Leave it if it turns out to
+        # hold anything else -- that is someone else's, and this is not the
+        # tool that decides it should go.
+        try:
+            legacy.parent.rmdir()
+        except OSError:
+            pass
+
     return path
 
 

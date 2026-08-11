@@ -28,6 +28,9 @@ jobs:
       - name: Test check_release_surface.sh
         run: python3 scripts/test_release_surface.py
 
+      - name: Test pin_file.py
+        run: python3 scripts/test_pin_file.py
+
       - name: Test lint_blocks.py
         run: python3 scripts/test_lint_blocks.py
 
