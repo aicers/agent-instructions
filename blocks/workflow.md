@@ -12,6 +12,9 @@
 - Do NOT put issue or PR numbers in the title.
 - Body: wrap at 72 characters, free-form, explain *why* not *what*.
 - Separate title and body with a blank line.
+- Do NOT rely on literal `\n` escapes for a commit body — they land in
+  the subject line as characters, and git reports success. Use a real
+  multiline string, or `git commit -F` with a file or heredoc.
 - Reference issues in the body, not the title: `Closes #N` to close an
   issue, or `Part of #N` when the commit addresses part of one.
 
