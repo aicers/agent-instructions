@@ -39,6 +39,12 @@
   number,title,state,url`, and check `/pull/` vs `/issues/` in the URL.
 - Never act on failed or garbled command output. Re-verify every create
   and edit with a structured `--json` re-query before reporting success.
+- A body that was overwritten is recoverable: GitHub keeps every prior
+  version, and `gh api graphql` reads them out of
+  `userContentEdits(first: N) { nodes { editedAt editor { login } diff } }`
+  on the issue or pull request. Restore the one you want with
+  `--body-file`. Do NOT retype it from memory — a body that reads like
+  the original and is not is worse than the empty one it replaced.
 
 ## Markdown lint configuration
 
