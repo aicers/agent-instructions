@@ -226,37 +226,6 @@ def main() -> int:
             "changes nothing",
         )
 
-        # The pin moved out of `.agents/`, and a repository is
-        # meant to arrive on the new path inside whatever release the apply
-        # was already delivering -- with nothing for anyone in the consumer
-        # to do about it.
-        print("a repository still on the superseded pin path")
-        legacy = tmp / "legacy"
-        legacy.mkdir(parents=True)
-        (legacy / "AGENTS.md").write_text(AGENTS, encoding="utf-8")
-        (legacy / ".agents").mkdir()
-        (legacy / ".agents" / "instructions.toml").write_text(
-            PIN, encoding="utf-8"
-        )
-        result = run(
-            release(tmp / "legacy-upstream", {"legacy": ["demo"]}),
-            legacy,
-            "0.2.0",
-        )
-        check(result.returncode == 0, "exits 0")
-        check(
-            "- current text" in (legacy / "AGENTS.md").read_text(
-                encoding="utf-8"
-            ),
-            "the blocks are applied",
-        )
-        check((legacy / ".agent-instructions.toml").is_file(),
-              "the pin lands on the current path")
-        check(
-            not (legacy / ".agents").exists(),
-            "and the old file goes, rather than both surviving",
-        )
-
         print("a caller passing owner/name, as github.repository does")
         owned = consumer(tmp / "owned")
         result = run(

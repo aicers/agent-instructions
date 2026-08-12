@@ -98,11 +98,10 @@ and open to being read as tool output and added to a `.gitignore`. The
 name now says whose the file is, and a single file has no directory
 anyone can ignore wholesale.
 
-`pin_file.py` still reads the old path when a repository has only that
-one, and every write moves the repository off it. So a consumer migrates
-inside whatever release its apply was already delivering, with nothing
-for anyone there to do. The fallback comes out once no repository is on
-the old path, in its own release.
+Every repository was carried onto the current path by an ordinary apply,
+so `pin_file.py` reads that one path and nothing else. A checkout
+restored from a branch older than the move fails naming the file to
+create, rather than being read from a path no driver writes.
 
 Inside `AGENTS.md`, the shared regions are delimited by markers and
 everything outside them belongs to the repository:
