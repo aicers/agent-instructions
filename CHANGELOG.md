@@ -4,6 +4,20 @@ This file documents recent notable changes to this project. The format of this
 file is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Removed
+
+- `pin_file.py` no longer reads the pre-0.3.0 pin path. It accepted
+  `.agents/instructions.toml` where that was the only file present, and
+  every write moved the repository onto `.agent-instructions.toml` and
+  deleted the old one, so that the move needed nothing done in a
+  consumer. Every repository has since been carried across, so what the
+  fallback covers now is a checkout restored from a branch older than
+  the move — which is better told to create the file than read from a
+  path no driver writes. Such a repository fails naming
+  `.agent-instructions.toml`.
+
 ## [0.3.1] - 2026-08-12
 
 ### Added
@@ -285,6 +299,7 @@ contract has never run in a consumer once.
   and would leave every pull request pinned to one release and filled from
   another. `scripts/test_sync.py` covers it.
 
+[Unreleased]: https://github.com/aicers/agent-instructions/compare/0.3.1...main
 [0.3.1]: https://github.com/aicers/agent-instructions/compare/0.3.0...0.3.1
 [0.3.0]: https://github.com/aicers/agent-instructions/compare/0.2.1...0.3.0
 [0.2.1]: https://github.com/aicers/agent-instructions/compare/0.2.0...0.2.1
