@@ -4,7 +4,7 @@ This file documents recent notable changes to this project. The format of this
 file is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.1] - 2026-08-12
 
 ### Added
 
@@ -23,6 +23,39 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   fetched, which rules nothing out and so is not read as no branches.
   `scripts/check_drift.py` holds the comparison and
   `scripts/test_check_drift.py` covers it.
+- The `workflow` block says how to recover an issue or pull request body
+  that was overwritten. GitHub keeps every prior version, `gh api
+  graphql` reads them out of `userContentEdits`, and `--body-file`
+  restores the one you want. The block said how to avoid writing to the
+  wrong issue and nothing about what to do once a body had gone anyway,
+  and that half cannot be worked out in the moment: nothing in the `gh`
+  command line suggests the API exists. It also says not to retype the
+  body from memory — one that reads like the original and is not is
+  harder to notice, and harder to undo, than an empty one.
+- The `workflow` block says not to build a commit body out of literal
+  `\n` escapes. They land in the subject line as two characters, the
+  body comes out empty, and git reports success, so one mistake breaks
+  the title-length, blank-line, and explain-why rules at once with
+  nothing downstream to catch it — no lint reads commit subjects. Use a
+  real multiline string, or `git commit -F` with a file or heredoc.
+- The `changelog` block says what becomes of the `[Unreleased]` section
+  when a release is cut: the heading turns into the version and its link
+  reference into a compare range, and the next change to land opens a
+  new one. An empty section left behind is not cosmetic where a release
+  job builds its notes by finding the heading that matches the tag — it
+  finds nothing and fails after the tag has already been pushed.
+
+### Changed
+
+- The `changelog` block's no-references bullet leads with the reason
+  that covers it. The rule is categorical, and everything justifying it
+  was about `Closes #N` and `Part of #N` being GitHub automation
+  keywords — which left a plain `(#N)`, neither a keyword nor a
+  command to a bot, resting on nothing. The reason that reaches the
+  whole rule is the reader: the number names something in a tracker
+  they may not be able to open, and git and that tracker already hold
+  the history it points at. The keyword argument stays as the sharper
+  case, one sentence shorter.
 
 ## [0.3.0] - 2026-08-11
 
@@ -252,7 +285,7 @@ contract has never run in a consumer once.
   and would leave every pull request pinned to one release and filled from
   another. `scripts/test_sync.py` covers it.
 
-[Unreleased]: https://github.com/aicers/agent-instructions/compare/0.3.0...main
+[0.3.1]: https://github.com/aicers/agent-instructions/compare/0.3.0...0.3.1
 [0.3.0]: https://github.com/aicers/agent-instructions/compare/0.2.1...0.3.0
 [0.2.1]: https://github.com/aicers/agent-instructions/compare/0.2.0...0.2.1
 [0.2.0]: https://github.com/aicers/agent-instructions/compare/0.1.5...0.2.0
