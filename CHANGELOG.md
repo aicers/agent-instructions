@@ -6,6 +6,53 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- The `node` block says that a suppression is not a substitute for a
+  type, and that a comment recording the real type as inconvenient is
+  not a reason. The block banned `any` and separately allowed a
+  suppression carrying a comment, and never said whether the second
+  reached the first — so a documented `biome-ignore` on the rule that
+  forbids `any` read as compliance. It also names what a reason does
+  look like: a shape nobody here controls, or a test whose point is
+  that the code under it does not type-check.
+- The `node` block forbids a double assertion (`as unknown as T`). A
+  single `as` still has to be plausible to the compiler, and routing
+  through `unknown` removes even that, leaving an assertion nothing
+  checked. It binds hand-written code only: generated output belongs to
+  whatever emits it, and an edit there is undone on the next run.
+- The `node` block says to install with the lockfile as the authority,
+  through `pnpm install --frozen-lockfile` in CI, so a `package.json`
+  change that never reached `pnpm-lock.yaml` fails there rather than
+  resolving to something nobody chose. It is what the ban on `npx`
+  above it rests on, and it was assumed rather than written down.
+
+### Changed
+
+- The `node` block's ban on `npx` names what to use instead and why it
+  is banned. It said only "NEVER use `npx`", which left the reader with
+  no spelling for a tool that is not a dependency, and left the
+  prohibition resting on the pnpm-exclusivity rule above it rather than
+  on anything about `npx`. A project dependency runs through `pnpm
+  exec`; a one-off runs through `pnpm dlx` at an exact version, never a
+  dist-tag, since `@latest` pins nothing and a scheduled run would
+  execute whatever was published since the last one. The ban itself is
+  now grounded: where the name is not already installed, `npx` resolves
+  and installs a remote package instead of failing.
+- The `node` block's suppression rule covers the linter as well as the
+  type checker, and rules out `@ts-ignore` outright. It named
+  `@ts-ignore` and `@ts-expect-error` alone, so a `biome-ignore` fell
+  outside a rule plainly meant to reach it. `@ts-ignore` goes because
+  it outlives the error it was written for and hides whatever appears
+  on that line next, where `@ts-expect-error` fails once the error it
+  names is gone.
+- The `node` block's rule against `any` names the boundaries data
+  arrives across — a network response, a file, an environment variable,
+  a third-party callback — and says it enters as `unknown` and is
+  narrowed there. "Genuinely unknown at a boundary" was the same rule
+  with the boundaries left to the reader, which is where the `any` gets
+  written.
+
 ### Removed
 
 - `pin_file.py` no longer reads the pre-0.3.0 pin path. It accepted
