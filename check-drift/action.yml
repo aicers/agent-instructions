@@ -1,0 +1,166 @@
+name: Shared instruction-block drift
+description: >-
+  Fail when this repository's marked instruction blocks differ from
+  aicers/agent-instructions at the release it says it carries.
+
+# Composite action. A consuming repository runs it as a step inside a job
+# it already has:
+#
+#   - uses: actions/checkout@v4
+#   - uses: aicers/agent-instructions/check-drift@main
+#
+# Same check as `.github/workflows/check-drift.yml`, which stays and stays
+# supported -- see that file for what the check is and why it is pinned.
+# The difference is where it runs. The reusable workflow is a job, and
+# GitHub bills a job by the minute, rounded up; this takes nine seconds
+# and runs on every pull request in thirteen repositories. As a step it
+# runs on the host job's runner, and those nine seconds disappear into a
+# minute that was already being paid for.
+#
+# `check-drift/` rather than the repository root, so that
+# `aicers/agent-instructions@<ref>` is not claimed by the first of several
+# things this repository could offer. An apply action is the obvious
+# second.
+#
+# `@main`, as with the workflow. The scripts here are mechanism and come
+# from wherever this file does; the blocks are content and come from the
+# pin. Pinning this to a release would freeze the check's implementation
+# at whatever shipped beside those blocks, so a step added here would fail
+# in every repository still on an older release.
+#
+# No checkout of the calling repository: the host job has already done it,
+# which is the whole point of running here. No `permissions:` block
+# either, for the reason the workflow gives -- an action cannot ask for
+# one at all, and everything below needs only reads the caller's default
+# token already has.
+
+inputs:
+  target:
+    description: File in the caller repository holding the blocks
+    required: false
+    default: AGENTS.md
+
+runs:
+  using: composite
+  steps:
+    # `github.action_path` is this directory inside the copy of
+    # aicers/agent-instructions the runner downloaded to run the action,
+    # which sits under `_actions/` rather than in the caller's workspace.
+    # The scripts are already there: the checkout `check-drift.yml` has to
+    # perform is what an action gets for free, and from the same ref this
+    # file came from, which is what that checkout was arranging anyway.
+
+    # A repository with no pin file, or one that does not say both things,
+    # fails here rather than being read as carrying no blocks -- which
+    # would pass this check by comparing nothing, while the step below
+    # called every region it has unlisted.
+    - name: Read the pin
+      id: pin
+      shell: bash
+      env:
+        SCRIPTS: ${{ github.action_path }}/../scripts
+      run: |
+        set -euo pipefail
+        pin=$(python3 "$SCRIPTS/pin_file.py" read .)
+        echo "$pin"
+        echo "$pin" >> "$GITHUB_OUTPUT"
+
+    # A schedule can stop without anybody noticing. GitHub disables a
+    # scheduled workflow in a repository with 60 days of no activity and
+    # says nothing about it, so a quiet repository stops proposing
+    # releases to itself and the only symptom is the absence of pull
+    # requests nobody was expecting. This runs on every pull request in
+    # every consumer and already knows the pin, so it is where that
+    # becomes visible.
+    #
+    # Before the comparison rather than after it, so a repository whose
+    # blocks are also out of date still gets told which release it is
+    # missing.
+    #
+    # `continue-on-error` is not available to a step inside a composite
+    # action, and this step must never decide the job. So the script
+    # exits 0 on every path instead, and reports through `::warning::`;
+    # `scripts/warn_behind.sh` says what that costs.
+    - name: Warn when the pin is behind the latest release
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        SCRIPTS: ${{ github.action_path }}/../scripts
+        PIN: ${{ steps.pin.outputs.ref }}
+      run: bash "$SCRIPTS/warn_behind.sh" "$PIN"
+
+    # Under `$RUNNER_TEMP`, never in the workspace. The workspace belongs
+    # to a job doing other work, and these are Markdown files:
+    # `scripts/fetch_blocks.sh` explains what that rules out, and refuses
+    # a destination inside the workspace rather than trusting this line.
+    - name: Fetch the pinned blocks
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        SCRIPTS: ${{ github.action_path }}/../scripts
+        REF: ${{ steps.pin.outputs.ref }}
+        BLOCKS_DIR: ${{ runner.temp }}/agent-instructions-blocks
+      run: bash "$SCRIPTS/fetch_blocks.sh" "$REF" "$BLOCKS_DIR"
+
+    - name: Compare blocks
+      shell: bash
+      env:
+        SCRIPTS: ${{ github.action_path }}/../scripts
+        BLOCKS: ${{ steps.pin.outputs.blocks }}
+        BLOCKS_DIR: ${{ runner.temp }}/agent-instructions-blocks
+        TARGET: ${{ inputs.target }}
+      run: |
+        status=0
+        # BLOCKS is a space-separated list and is meant to split.
+        for block in $BLOCKS; do
+          python3 "$SCRIPTS/render.py" check \
+            "$TARGET" \
+            "$BLOCKS_DIR/blocks/$block.md" || status=1
+        done
+        if [ "$status" -ne 0 ]; then
+          echo "::error::$TARGET is out of date with aicers/agent-instructions."
+          echo "Do not edit the marked blocks here. Change them upstream and"
+          echo "cut a release; this repository's scheduled apply.yml job then"
+          echo "opens the pull request that updates this copy."
+        fi
+        exit "$status"
+
+    # A block retired upstream is dropped from the pin file, and the step
+    # above then stops looking at it -- leaving a stale copy of a rule
+    # sitting beside its replacement with nothing to notice. Compare the
+    # other direction too.
+    - name: Reject blocks this repository no longer lists
+      shell: bash
+      env:
+        SCRIPTS: ${{ github.action_path }}/../scripts
+        BLOCKS: ${{ steps.pin.outputs.blocks }}
+        TARGET: ${{ inputs.target }}
+      run: |
+        set -euo pipefail
+        listed=" $BLOCKS "
+        status=0
+        carried=$(python3 "$SCRIPTS/render.py" names "$TARGET")
+        for present in $carried; do
+          case "$listed" in
+            *" $present "*) ;;
+            *)
+              echo "::error::$TARGET carries shared:$present, which this"\
+                   "repository no longer lists. Remove the marker pair."
+              status=1
+              ;;
+          esac
+        done
+        exit "$status"
+
+    # `$RUNNER_TEMP` is cleared between jobs on a hosted runner, so on the
+    # fleet this was written for the directory is gone either way. Not on
+    # every runner, and "outside the workspace" was only half of what the
+    # blocks must not do -- the other half is not outliving the run. So it
+    # is removed here, and `if: always()` because a drifted block makes
+    # the step above fail, which is the run that most needs the tidying.
+    - name: Remove the fetched blocks
+      if: always()
+      shell: bash
+      env:
+        BLOCKS_DIR: ${{ runner.temp }}/agent-instructions-blocks
+      run: rm -rf "$BLOCKS_DIR"
