@@ -123,8 +123,29 @@ jobs:
           # tag that was never released has not passed the release-surface
           # guard. It is also what the apply would deliver, so this names
           # the release dispatching that job would actually bring.
-          if ! latest=$(gh release view --repo aicers/agent-instructions \
-                          --json tagName --jq .tagName); then
+          #
+          # Asked with curl rather than with `gh`, which this job has and
+          # `check-drift/action.yml` cannot count on: that one runs inside
+          # a consumer's job, and a self-hosted runner carries git,
+          # python3, curl and tar but no `gh`. Nothing here needs the
+          # change -- but the two decide the same warning, and the copy
+          # that stays behind is the one that stops being read.
+          # `scripts/warn_behind.sh` says the rest, including why `gh`
+          # missing is the failure nobody would see.
+          token=${GH_TOKEN:-${GITHUB_TOKEN:-}}
+          if [[ -n $token ]]; then
+            authorization="Authorization: Bearer $token"
+          else
+            authorization="Authorization:"
+          fi
+          tag_name='import json, sys; print(json.load(sys.stdin).get("tag_name") or "")'
+          api=https://api.github.com/repos/aicers/agent-instructions/releases/latest
+          if ! latest=$(curl -fsSL --retry 3 \
+                          -H "$authorization" \
+                          -H "X-GitHub-Api-Version: 2022-11-28" \
+                          "$api" |
+                        python3 -c "$tag_name" 2>/dev/null) \
+             || [[ -z $latest ]]; then
             echo "could not resolve the latest release; nothing to compare"
             exit 0
           fi

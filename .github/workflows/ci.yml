@@ -105,9 +105,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          # The same question the action asks, asked the same way: what
-          # "latest" means here has to be what it means there, or the
-          # fixture built on it would be the one that is behind.
+          # The same question the action asks: what "latest" means here
+          # has to be what it means there, or the fixture built on it
+          # would be the one that is behind. `gh release view` with no
+          # tag reads `releases/latest`, which is the endpoint the action
+          # curls, so the two cannot disagree about the answer.
+          #
+          # This is the last step here that wants `gh`, and it is the
+          # job's own scaffolding rather than anything under test. The
+          # step after it takes `gh` away.
           latest=$(gh release view --repo aicers/agent-instructions \
                      --json tagName --jq .tagName)
           # The newest release that is not that one, rather than the
@@ -124,6 +130,33 @@ jobs:
           echo "latest=$latest" >> "$GITHUB_OUTPUT"
           echo "previous=$previous" >> "$GITHUB_OUTPUT"
           echo "building fixtures on $latest and $previous"
+
+      # Everything below runs the way it would on a self-hosted runner,
+      # which is where the action has to work and where `gh` is not
+      # installed: those hosts carry git, python3, curl and tar, and the
+      # fleet's rule is that the machine provides a tool and keeps it
+      # current rather than every job installing its own. A stub that
+      # fails is what a missing command looks like to a caller, and this
+      # one says which command it was.
+      #
+      # The point is not that the action survives it. It did before: the
+      # pin warning would take its "could not resolve" branch, print a
+      # line that reads in a log almost exactly like the check working,
+      # and leave the job green -- with the one thing this check runs on
+      # every pull request to catch silently switched off. What is
+      # asserted is further down, where the fixture that is behind has to
+      # produce its warning with this on the PATH.
+      - name: Take `gh` off the runner
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/no-gh"
+          printf '%s\n' \
+            '#!/usr/bin/env bash' \
+            'echo "gh: command not found" >&2' \
+            'exit 127' \
+            > "$RUNNER_TEMP/no-gh/gh"
+          chmod +x "$RUNNER_TEMP/no-gh/gh"
+          echo "$RUNNER_TEMP/no-gh" >> "$GITHUB_PATH"
 
       - name: Build a fixture carrying the latest release
         env:
@@ -216,6 +249,12 @@ jobs:
           # inside an action it called -- so the warning itself is taken
           # from the same script the action just ran, in the same
           # workspace, with the same pin.
+          #
+          # And with no `gh` on the PATH, which is the whole of it. A
+          # `gh` this script still reached for would leave this run
+          # saying it could not resolve the latest release: green, one
+          # line in a log that reads like the check working, and no
+          # warning -- so the `grep` below is what tells the two apart.
           source/scripts/warn_behind.sh "$PIN" | tee "$RUNNER_TEMP/warning"
           grep -q '^::warning::' "$RUNNER_TEMP/warning"
 
@@ -224,22 +263,37 @@ jobs:
       # it: `warn_behind.sh` exits 0 on every path instead, and
       # `scripts/test_warn_behind.py` walks each of those paths with the
       # commands stubbed. This is the same property with the real action
-      # around it -- a `gh` that cannot answer, and a run that has to
-      # come back green regardless, since a consumer's pull request must
-      # not go red because this step could not reach GitHub.
+      # around it -- a release lookup that cannot answer, and a run that
+      # has to come back green regardless, since a consumer's pull
+      # request must not go red because this step could not reach GitHub.
+      #
+      # Only that one call. The warning and `scripts/fetch_blocks.sh`
+      # both reach GitHub with curl, and a curl that failed outright
+      # would fail the fetch instead -- a real failure, of a step that is
+      # allowed to have one, telling us nothing about the step being
+      # tested. So the stub matches the release endpoint and hands
+      # everything else to the curl that was already there.
       #
       # Last in the job. `$GITHUB_PATH` reaches every step after the one
-      # that writes it, and nothing else here should meet this `gh`.
+      # that writes it, and nothing else here should meet this `curl`.
       - name: Break the call the warning makes
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/stub"
+          curl=$(command -v curl)
           printf '%s\n' \
             '#!/usr/bin/env bash' \
-            'echo "gh: could not connect to github.com" >&2' \
-            'exit 1' \
-            > "$RUNNER_TEMP/stub/gh"
-          chmod +x "$RUNNER_TEMP/stub/gh"
+            'for argument in "$@"; do' \
+            '  case $argument in' \
+            '    */releases/latest)' \
+            '      echo "curl: (6) Could not resolve host" >&2' \
+            '      exit 6' \
+            '      ;;' \
+            '  esac' \
+            'done' \
+            "exec $curl \"\$@\"" \
+            > "$RUNNER_TEMP/stub/curl"
+          chmod +x "$RUNNER_TEMP/stub/curl"
           echo "$RUNNER_TEMP/stub" >> "$GITHUB_PATH"
 
       # No confirmation step after it: this one passing is the assertion,

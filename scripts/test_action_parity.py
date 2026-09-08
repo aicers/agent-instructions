@@ -70,9 +70,22 @@ COMMANDS = (
 # together here: what each asks GitHub, how each tells an unreadable
 # branch listing from an empty one, and what each says when the network
 # does not answer.
+#
+# Including how each asks it. Neither reaches for `gh`: the action runs
+# inside a consumer's job, and a self-hosted runner carries git, python3,
+# curl and tar but not that -- where the pin warning would take its
+# "could not resolve" branch on every pull request and stay green, which
+# looks in a log almost exactly like the check working. The workflow runs
+# on `ubuntu-latest` and could have kept `gh`, but then the two would ask
+# GitHub two different ways, and the one nobody exercises is the one that
+# rots.
 WARNING = (
-    "gh release view --repo",
-    "--json tagName --jq .tagName",
+    "curl -fsSL --retry 3",
+    "https://api.github.com/repos/",
+    "/releases/latest",
+    "Authorization: Bearer $token",
+    'print(json.load(sys.stdin).get("tag_name") or "")',
+    'python3 -c "$tag_name"',
     "git ls-remote --heads origin shared-instructions/*",
     "--branches-unknown",
     "check_drift.py",

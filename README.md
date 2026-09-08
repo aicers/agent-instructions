@@ -513,6 +513,15 @@ private repository, and nothing here takes a secret to hand it a
 different one, so this repository is public. It holds no secrets itself,
 which is what makes that the simpler answer rather than a compromise.
 
+The two of them reach for `git`, `python3`, `curl` and `tar`, and
+nothing else. `gh` is not on that list, which is what lets the action be
+hosted by a job on a self-hosted runner: those machines have the four
+and not that one. A missing `gh` would not have failed anything, which
+is the worse outcome — the pin warning would have said it could not
+resolve the latest release, on every pull request in that repository,
+green and looking in the log almost exactly like the check working. What
+would have stopped is the half that notices a schedule has stopped.
+
 ### What the action does differently
 
 Two things, both forced by where it runs.
