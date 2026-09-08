@@ -34,6 +34,8 @@ better commit-message rules that the rest never received.
 ```text
 blocks/         the shared regions, one file per block
 repos.json      which repository consumes which blocks
+check-drift/    the drift check as a composite action, for a consumer
+                that would rather run it as a step than as a job
 scripts/
   render.py       apply, verify, list, or retire a block in one file
   pin_file.py     read or write a consumer's .agent-instructions.toml
@@ -41,6 +43,9 @@ scripts/
   sync.sh         fan out apply_blocks.py to every repository at once
   lint_blocks.py  enforce the authoring rules in STYLE.md
   check_drift.py  warn when a consumer's pin is behind the latest release
+  warn_behind.sh  drive that warning, and never fail whatever it finds
+  fetch_blocks.sh put a release's blocks outside a consumer's workspace
+  consumer_fixture.sh  build a throwaway consumer, for CI to check against
   check_release_surface.sh  refuse a release with nothing in it
   test_*.py       tests for the scripts above, run in CI
 STYLE.md        how to write a block
@@ -50,7 +55,8 @@ CHANGELOG.md    what each release changed; also its release notes
 The two workflows under `.github/workflows/` that consumers call are
 `apply.yml`, which delivers a release, and `check-drift.yml`, which
 notices when a repository's copy stops matching the release it is pinned
-to.
+to. `check-drift/action.yml` is that second one again, as a composite
+action: the same check, reached as a step rather than as a job.
 
 ## The consumer contract
 
@@ -312,7 +318,7 @@ notification, and the only symptom is the absence of pull requests nobody
 was expecting on a particular day. `workflow_dispatch` recovers it, but
 only for somebody who already suspects it stopped.
 
-So `check-drift.yml` — which runs on every pull request in every consumer,
+So the drift check — which runs on every pull request in every consumer,
 and already reads the pin — resolves the latest release too, and warns
 when the pin is behind it:
 
@@ -353,10 +359,13 @@ on the next pull request, so the run that skips it loses nothing
 permanent. The same goes for a latest release that could not be resolved:
 the step says so in the log and leaves the pull request alone.
 
-The comparison itself is `scripts/check_drift.py`, driven from the
-workflow the way `pin_file.py` and `render.py` already are, and covered by
+The comparison itself is `scripts/check_drift.py`, driven the way
+`pin_file.py` and `render.py` already are, and covered by
 `scripts/test_check_drift.py`. Logic written inline in the YAML would have
-nowhere to be tested from.
+nowhere to be tested from — which is also why the action drives that step
+through `scripts/warn_behind.sh` rather than through a copy of the
+workflow's shell: what it has to do that the workflow does not, namely
+survive its own failure, is the part worth a test.
 
 ## The urgent path
 
@@ -424,7 +433,15 @@ repository is visible rather than silent.
 
 ## Catching drift
 
-Each consuming repository calls the reusable workflow from its own CI:
+Two entry points, one check. As a **step** in a job the repository
+already has:
+
+```yaml
+- uses: actions/checkout@v4
+- uses: aicers/agent-instructions/check-drift@main
+```
+
+or, where there is no such job, as a **job** of its own:
 
 ```yaml
 jobs:
@@ -432,17 +449,35 @@ jobs:
     uses: aicers/agent-instructions/.github/workflows/check-drift.yml@main
 ```
 
-No `with:` block: the release to compare against and the blocks to compare
-both come from the repository's `.agent-instructions.toml`. It fails when
-a repository's copy differs from this repository at that release — whether
-because someone edited a generated region locally, or because an update
-pull request was never merged.
+Reach for the action wherever there is a job to host it, and for the
+workflow only where there is not — a repository whose CI is nothing but
+`uses:` calls, say. GitHub bills a job by the minute, rounded up, and
+this check takes nine seconds: over thirty days the three repositories
+that run it most did 21 minutes of work between them and were billed 131.
+As a step those nine seconds land inside a minute already being paid for,
+and the action skips the checkout of the calling repository that the
+workflow has to do first, since the host job has already done it.
+
+Moving is a change per repository and there is no hurry: `check-drift.yml`
+stays, and stays supported. What it costs is not only the two lines. The
+required status check is named after the job that runs it, so
+`Instructions / check` stops existing under that name and the
+repository's branch protection has to be edited in the same change.
+
+Neither takes a `with:` block: the release to compare against and the
+blocks to compare both come from the repository's
+`.agent-instructions.toml`. Either fails when a repository's copy differs
+from this repository at that release — whether because someone edited a
+generated region locally, or because an update pull request was never
+merged.
 
 A caller with nothing to pass is a caller nothing upstream ever has to
 rewrite, which is what keeps the apply out of `.github/workflows/`. It
 also leaves one source for each value rather than two that can disagree.
+Both take one input, `target`, defaulting to `AGENTS.md`, for a
+repository that keeps its blocks somewhere else.
 
-One thing it warns about rather than fails on: a pin behind the latest
+One thing they warn about rather than fail on: a pin behind the latest
 release, which is how a stopped schedule becomes visible: [A stopped
 schedule shows up on a pull
 request](#a-stopped-schedule-shows-up-on-a-pull-request), above.
@@ -460,20 +495,47 @@ and the only one. It is deliberately not repeated in a comment, nor in a
 version on each BEGIN marker: it decides what the comparison runs
 against, so unlike either of those it cannot be wrong.
 
-The pin covers the blocks, and only the blocks. The workflow checks the
-scripts out separately, from wherever it comes from itself, because they
-are mechanism rather than content — the same reason `uses:` sits at
-`@main`. Pin the scripts to the release and the check's implementation
-freezes at whatever shipped with those blocks, so a step added here
-would fail on every repository still on an older release, calling a
-subcommand that release has never heard of.
+The pin covers the blocks, and only the blocks. The scripts that do the
+comparing come from wherever the caller reached this repository, because
+they are mechanism rather than content — the same reason `uses:` sits at
+`@main` in both. Pin the scripts to the release and the check's
+implementation freezes at whatever shipped with those blocks, so a step
+added here would fail on every repository still on an older release,
+calling a subcommand that release has never heard of. The workflow checks
+them out for itself; the action already has them, since GitHub downloads
+the action's repository at the ref it was called at, which is the
+checkout the workflow was arranging.
 
-Both reusable workflows read this repository with the caller's own
-default `GITHUB_TOKEN` — the checkouts in either, and `apply.yml`'s
-lookup of the latest release. That token cannot read a private
-repository, and neither workflow takes a secret to hand it a different
-one, so this repository is public. It holds no secrets itself, which is
-what makes that the simpler answer rather than a compromise.
+Everything here reads this repository with the caller's own default
+`GITHUB_TOKEN` — the checkouts, the action's fetch of the blocks, and
+`apply.yml`'s lookup of the latest release. That token cannot read a
+private repository, and nothing here takes a secret to hand it a
+different one, so this repository is public. It holds no secrets itself,
+which is what makes that the simpler answer rather than a compromise.
+
+### What the action does differently
+
+Two things, both forced by where it runs.
+
+The pinned blocks are unpacked under `$RUNNER_TEMP` rather than into the
+workspace, and removed at the end of the step. They are Markdown files,
+and the workspace now belongs to a job doing other work: a
+`markdownlint-cli2 "**/*.md"` later in that job would otherwise be
+linting this repository's release, and a self-hosted runner would hand
+the next job a copy of it. `actions/checkout` cannot place them anywhere
+else — it refuses a `path:` outside the workspace — so
+`scripts/fetch_blocks.sh` fetches them as a tarball instead, and refuses
+a destination inside the workspace rather than leaving that to whoever
+edits the action next.
+
+And the step that warns about a pin behind the latest release reports
+green when it breaks, rather than failed-but-not-blocking. That step must
+never decide the job — going red because a release exists upstream is the
+outcome pinning exists to prevent — which the workflow says with
+`continue-on-error: true`. Composite steps have no such key, so
+`scripts/warn_behind.sh` exits 0 on every path instead. The failure is
+still in the log; nothing marks the run. The half that matters is
+unchanged.
 
 ## Onboarding a repository
 
@@ -504,10 +566,12 @@ what makes that the simpler answer rather than a compromise.
    check checks that ref out. Both drivers refuse a repository that
    consumes blocks without this file rather than leaving it floating, and
    neither reads a missing one as naming no blocks.
-5. Add the drift-check job to its CI, and the calling workflow from [How
-   a release reaches a repository](#how-a-release-reaches-a-repository)
-   so the repository pulls every release from then on. Neither takes an
-   input or a secret, and nothing has to be registered for either.
+5. Add the drift check to its CI — as a step in a job it already has,
+   or as a job of its own where there is none — and the calling workflow
+   from [How a release reaches a
+   repository](#how-a-release-reaches-a-repository) so the repository
+   pulls every release from then on. Neither takes an input or a secret,
+   and nothing has to be registered for either.
 6. Run `scripts/sync.sh <tag> <repo>` to fill the regions and set the
    pin now, rather than waiting for the first scheduled run. Running the
    caller's `workflow_dispatch` does the same thing from the other side.

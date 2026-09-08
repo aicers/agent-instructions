@@ -4,6 +4,31 @@ This file documents recent notable changes to this project. The format of this
 file is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- The drift check is available as a composite action,
+  `aicers/agent-instructions/check-drift@main`, so a repository can run
+  it as a step inside a job it already has rather than as a job of its
+  own. GitHub bills a job by the minute, rounded up, and this check takes
+  nine seconds: over thirty days the three repositories that run it most
+  did 21 minutes of work between them and were billed 131. As a step
+  those nine seconds land inside a minute already being paid for, and it
+  skips the checkout of the calling repository, which the host job has
+  already done. Same check, same failure conditions, same messages, same
+  `target` input. Two things differ, both forced by where it runs: the
+  pinned blocks are unpacked under `$RUNNER_TEMP` and removed at the end
+  of the step, since they are Markdown and the workspace now belongs to a
+  job doing other work; and the step that warns about a pin behind the
+  latest release reports green when it breaks rather than
+  failed-but-not-blocking, because a composite step has no
+  `continue-on-error` — it still cannot decide the job, which is the half
+  that matters. `check-drift.yml` is unchanged and stays supported, so
+  moving is a decision per repository. It is not free: the required check
+  `Instructions / check` stops existing under that name, so branch
+  protection has to be edited in the same change.
+
 ## [0.4.0] - 2026-08-14
 
 ### Added
@@ -346,6 +371,7 @@ contract has never run in a consumer once.
   and would leave every pull request pinned to one release and filled from
   another. `scripts/test_sync.py` covers it.
 
+[Unreleased]: https://github.com/aicers/agent-instructions/compare/0.4.0...main
 [0.4.0]: https://github.com/aicers/agent-instructions/compare/0.3.1...0.4.0
 [0.3.1]: https://github.com/aicers/agent-instructions/compare/0.3.0...0.3.1
 [0.3.0]: https://github.com/aicers/agent-instructions/compare/0.2.1...0.3.0

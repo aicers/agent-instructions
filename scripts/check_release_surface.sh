@@ -8,8 +8,8 @@
 # the rules, and which of them each repository takes. `apply.yml` reads
 # both out of the release, so a change to either is something a consumer
 # applies. Everything else here is mechanism and reaches a consumer from
-# `@main` — the reusable workflows and the scripts they run — so it is
-# deliberately not compared.
+# `@main` — the reusable workflows, `check-drift/`, and the scripts all
+# three run — so it is deliberately not compared.
 #
 # A tag matching the previous release across both paths would give every
 # consumer a pull request whose only content is a moved pin, which is

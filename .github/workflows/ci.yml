@@ -37,6 +37,15 @@ jobs:
       - name: Test check_drift.py
         run: python3 scripts/test_check_drift.py
 
+      - name: Test warn_behind.sh
+        run: python3 scripts/test_warn_behind.py
+
+      - name: Test fetch_blocks.sh
+        run: python3 scripts/test_fetch_blocks.py
+
+      - name: Verify the action and the workflow still agree
+        run: python3 scripts/test_action_parity.py
+
       - name: Verify block markers and authoring rules
         run: python3 scripts/lint_blocks.py
 
@@ -55,3 +64,188 @@ jobs:
           if unused:
               print(f"note: blocks not consumed by any repository: {sorted(unused)}")
           PY
+
+  # `check-drift/action.yml` runs inside a consumer's job, and this
+  # repository is not one of its own consumers: it carries no AGENTS.md
+  # and no `.agent-instructions.toml`, so there is nothing here for the
+  # action to check. Published and never run is how a check ends up not
+  # working, so this job builds a consumer in its workspace instead --
+  # `scripts/consumer_fixture.sh`, filled from a real release -- and
+  # points the action at it three times: matching, drifted, and behind.
+  #
+  # This repository is checked out beside the fixture rather than under
+  # it, because the fixture has to be what sits at the root of the
+  # workspace: the action reads the pin from there, exactly as it would in
+  # a consumer.
+  action:
+    name: Exercise the check-drift action
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out this repository beside the fixture
+        uses: actions/checkout@v4
+        with:
+          path: source
+
+      - name: Turn the workspace into a consumer
+        run: |
+          set -euo pipefail
+          # A consumer's workspace is a git checkout, and the pin warning
+          # asks it for `shared-instructions/*`. Pointed at this
+          # repository, which has no such branches, that listing succeeds
+          # and comes back empty -- which is the case the warning is
+          # written for. Left out, git would find no repository at all and
+          # the warning would take its "could not list" path instead,
+          # quietly testing nothing.
+          git init -q .
+          git remote add origin https://github.com/aicers/agent-instructions
+
+      - name: Resolve the releases the fixtures are built from
+        id: releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # The same question the action asks, asked the same way: what
+          # "latest" means here has to be what it means there, or the
+          # fixture built on it would be the one that is behind.
+          latest=$(gh release view --repo aicers/agent-instructions \
+                     --json tagName --jq .tagName)
+          # The newest release that is not that one, rather than the
+          # second row: the two agree today and a release marked latest
+          # out of date order would make the difference matter.
+          previous=$(gh release list --repo aicers/agent-instructions \
+                       --limit 10 --json tagName \
+                       --jq "[.[].tagName | select(. != \"$latest\")][0]")
+          if [ -z "$previous" ] || [ "$previous" = "null" ]; then
+            echo "::error::this repository has only one release; the pin" \
+                 "warning has nothing to be behind"
+            exit 1
+          fi
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          echo "previous=$previous" >> "$GITHUB_OUTPUT"
+          echo "building fixtures on $latest and $previous"
+
+      - name: Build a fixture carrying the latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REF: ${{ steps.releases.outputs.latest }}
+        run: |
+          set -euo pipefail
+          source/scripts/consumer_fixture.sh "$REF"
+          # What the workspace holds before the action touches it, by
+          # content as well as by path. The blocks are Markdown, and a
+          # consumer's job goes on to do its own work in this tree; the
+          # comparison after each run is what says the action left nothing
+          # behind for it to walk into, and changed nothing that was
+          # already there.
+          find . -name .git -prune -o -type f -exec sha256sum {} + | sort -k2 \
+            > "$RUNNER_TEMP/workspace-before"
+
+      - name: Run the action against a matching fixture
+        uses: ./source/check-drift
+
+      - name: Confirm it passed and left the workspace alone
+        run: |
+          set -euo pipefail
+          find . -name .git -prune -o -type f -exec sha256sum {} + | sort -k2 \
+            > "$RUNNER_TEMP/workspace-after"
+          diff "$RUNNER_TEMP/workspace-before" "$RUNNER_TEMP/workspace-after"
+          # And that the copy it did unpack is gone rather than merely out
+          # of sight, since a self-hosted runner would hand this directory
+          # to whatever runs next.
+          if [ -e "$RUNNER_TEMP/agent-instructions-blocks" ]; then
+            echo "::error::the action left the blocks in \$RUNNER_TEMP"
+            exit 1
+          fi
+
+      - name: Edit a generated region by hand
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          target = Path("AGENTS.md")
+          text = target.read_text(encoding="utf-8")
+          marker = "<!-- BEGIN shared:workflow -->"
+          target.write_text(
+              text.replace(marker, f"{marker}\n\n- Someone edited this here.\n", 1),
+              encoding="utf-8",
+          )
+          PY
+          find . -name .git -prune -o -type f -exec sha256sum {} + | sort -k2 \
+            > "$RUNNER_TEMP/workspace-before"
+
+      - name: Run the action against a drifted fixture
+        id: drifted
+        continue-on-error: true
+        uses: ./source/check-drift
+
+      - name: Confirm it failed and still left the workspace alone
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.drifted.outcome }}" != "failure" ]; then
+            echo "::error::the action passed a fixture whose block was edited"
+            exit 1
+          fi
+          find . -name .git -prune -o -type f -exec sha256sum {} + | sort -k2 \
+            > "$RUNNER_TEMP/workspace-after"
+          diff "$RUNNER_TEMP/workspace-before" "$RUNNER_TEMP/workspace-after"
+          # The run that fails is the one that most needs the tidying, and
+          # the one a step ordered after the failure would not get to.
+          if [ -e "$RUNNER_TEMP/agent-instructions-blocks" ]; then
+            echo "::error::a failing run left the blocks in \$RUNNER_TEMP"
+            exit 1
+          fi
+
+      - name: Rebuild the fixture on the release before the latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REF: ${{ steps.releases.outputs.previous }}
+        run: source/scripts/consumer_fixture.sh "$REF"
+
+      - name: Run the action against a fixture that is behind
+        uses: ./source/check-drift
+
+      - name: Confirm that run warned rather than failed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PIN: ${{ steps.releases.outputs.previous }}
+        run: |
+          set -euo pipefail
+          # The step above staying green is half of it. The other half is
+          # not readable from here -- a job cannot see the log of a step
+          # inside an action it called -- so the warning itself is taken
+          # from the same script the action just ran, in the same
+          # workspace, with the same pin.
+          source/scripts/warn_behind.sh "$PIN" | tee "$RUNNER_TEMP/warning"
+          grep -q '^::warning::' "$RUNNER_TEMP/warning"
+
+      # The warning step must never decide the job, and inside a
+      # composite action there is no `continue-on-error` left to see to
+      # it: `warn_behind.sh` exits 0 on every path instead, and
+      # `scripts/test_warn_behind.py` walks each of those paths with the
+      # commands stubbed. This is the same property with the real action
+      # around it -- a `gh` that cannot answer, and a run that has to
+      # come back green regardless, since a consumer's pull request must
+      # not go red because this step could not reach GitHub.
+      #
+      # Last in the job. `$GITHUB_PATH` reaches every step after the one
+      # that writes it, and nothing else here should meet this `gh`.
+      - name: Break the call the warning makes
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/stub"
+          printf '%s\n' \
+            '#!/usr/bin/env bash' \
+            'echo "gh: could not connect to github.com" >&2' \
+            'exit 1' \
+            > "$RUNNER_TEMP/stub/gh"
+          chmod +x "$RUNNER_TEMP/stub/gh"
+          echo "$RUNNER_TEMP/stub" >> "$GITHUB_PATH"
+
+      # No confirmation step after it: this one passing is the assertion,
+      # and the job fails here if the broken warning reached it. The
+      # fixture is still the one built on the previous release, so
+      # everything the action does after the warning succeeds -- which is
+      # what leaves the warning as the only thing that could fail it.
+      - name: Run the action with the warning's network call broken
+        uses: ./source/check-drift
