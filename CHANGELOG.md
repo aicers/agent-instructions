@@ -24,10 +24,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   latest release reports green when it breaks rather than
   failed-but-not-blocking, because a composite step has no
   `continue-on-error` — it still cannot decide the job, which is the half
-  that matters. `check-drift.yml` is unchanged and stays supported, so
-  moving is a decision per repository. It is not free: the required check
-  `Instructions / check` stops existing under that name, so branch
-  protection has to be edited in the same change.
+  that matters. It asks the runner for nothing the host job has not
+  already brought: `git`, `python3`, `curl` and `tar`, and not `gh`, so
+  a job on a self-hosted runner can host it. `check-drift.yml` stays and
+  stays supported, so moving is a decision per repository. It is not
+  free: the required check `Instructions / check` stops existing under
+  that name, so branch protection has to be edited in the same change.
 
 ## [0.4.0] - 2026-08-14
 
