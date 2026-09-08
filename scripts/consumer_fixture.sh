@@ -39,11 +39,13 @@ if [[ -z $ref ]]; then
   exit 2
 fi
 
-# `mktemp -d` rather than a path under this directory: `fetch_blocks.sh`
-# refuses to unpack inside `$GITHUB_WORKSPACE`, which is where the fixture
-# is being built. On a runner TMPDIR is $RUNNER_TEMP, so this lands where
-# the action puts its own copy.
-blocks=$(mktemp -d)
+# `$RUNNER_TEMP` when there is one, so this lands where the action puts
+# its own copy, and `$TMPDIR` or `/tmp` otherwise. Not a path under this
+# directory either way: `fetch_blocks.sh` refuses to unpack inside
+# `$GITHUB_WORKSPACE`, which is where the fixture is being built, and
+# naming the directory rather than assuming a runner exports `TMPDIR` is
+# what keeps that a guard nothing here has to trip.
+blocks=$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/consumer-fixture.XXXXXX")
 trap 'rm -rf "$blocks"' EXIT
 
 "$here/fetch_blocks.sh" "$ref" "$blocks/release"
