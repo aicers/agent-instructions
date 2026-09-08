@@ -61,6 +61,8 @@ def run(
     body: str | None = None,
     branches: str | None = "",
     python: bool = True,
+    token: str = "",
+    record: Path | None = None,
 ) -> subprocess.CompletedProcess:
     """Run the script with `curl`, `gh`, `git` and `python3` replaced.
 
@@ -70,19 +72,31 @@ def run(
     that arrived and cannot be used. `branches=None` is a `git ls-remote`
     that fails, and `python=False` a `python3` that is not usable. None
     of them is anything being wrong with the pull request in front of it.
+
+    `token` is what the step was handed, and `record` a file the `curl`
+    stub writes its arguments to -- the request itself, which is
+    otherwise the one thing here nothing looks at.
     """
     with tempfile.TemporaryDirectory() as tmp:
         bin_dir = Path(tmp) / "bin"
         bin_dir.mkdir()
         # Never usable, only detectable. Nothing here may call it.
         stub(bin_dir, "gh", f'echo {GH_WAS_CALLED!r} >&2; exit 1')
+        # The stubs below answer the same whatever they are asked, so
+        # without this nothing would notice a request that went to the
+        # wrong endpoint or lost its token. Neither would the consumer:
+        # a 404 and a 401 both come back through the quiet "could not
+        # resolve" path, which is one line in a log away from the check
+        # working.
+        recorder = (
+            f'printf "%s\\n" "$@" >> {str(record)!r}; ' if record else ""
+        )
         if latest is None:
-            stub(
-                bin_dir,
-                "curl",
-                'echo "curl: (22) The requested URL returned error: 404" >&2;'
-                " exit 22",
+            unresolvable = (
+                'echo "curl: (22) The requested URL returned error: 404"'
+                " >&2; exit 22"
             )
+            stub(bin_dir, "curl", recorder + unresolvable)
         else:
             # The response the endpoint sends, through a file: the script
             # parses it as JSON, so it has to arrive as JSON rather than
@@ -101,7 +115,7 @@ def run(
                 ),
                 encoding="utf-8",
             )
-            stub(bin_dir, "curl", f'cat {str(payload)!r}')
+            stub(bin_dir, "curl", recorder + f'cat {str(payload)!r}')
         if branches is None:
             stub(bin_dir, "git", 'echo "fatal: could not read" >&2; exit 128')
         else:
@@ -121,6 +135,14 @@ def run(
             stub(bin_dir, "python3", 'echo "python3: not found" >&2; exit 127')
 
         environment = dict(os.environ, PATH=f"{bin_dir}:{os.environ['PATH']}")
+        # Decided here rather than inherited. A developer's shell and the
+        # job running this both tend to export one already, and which
+        # header goes out is the thing being tested below.
+        environment.pop("GITHUB_TOKEN", None)
+        if token:
+            environment["GH_TOKEN"] = token
+        else:
+            environment.pop("GH_TOKEN", None)
         return subprocess.run(
             ["bash", str(SCRIPT), *args],
             capture_output=True,
@@ -161,6 +183,41 @@ def main() -> int:
         GH_WAS_CALLED not in result.stderr,
         "and does not fall back to one when the lookup fails",
     )
+
+    print("the request the lookup sends")
+    # `gh release view` with no tag read `releases/latest`, and the
+    # token came to it through the environment. Both have to survive the
+    # move to curl: the wrong endpoint answers 404 and a token dropped
+    # from the header answers 401 for a private consumer, and each of
+    # those arrives as "could not resolve" rather than as anything
+    # somebody would go and look at.
+    with tempfile.TemporaryDirectory() as tmp:
+        sent = Path(tmp) / "arguments"
+        run("0.1.0", token="s3cr3t", record=sent)
+        arguments = sent.read_text(encoding="utf-8").splitlines()
+        check(
+            "https://api.github.com/repos/aicers/agent-instructions"
+            "/releases/latest" in arguments,
+            "asks the endpoint `gh release view` was reading",
+        )
+        check(
+            "Authorization: Bearer s3cr3t" in arguments,
+            "hands over the token it was given",
+        )
+
+        sent.write_text("", encoding="utf-8")
+        run("0.1.0", record=sent)
+        arguments = sent.read_text(encoding="utf-8").splitlines()
+        check(
+            "Authorization:" in arguments,
+            "and with no token sends the header with no value, which curl"
+            " reads as not sending it",
+        )
+        check(
+            not any(a.startswith("Authorization: Bearer") for a in arguments),
+            "rather than an empty Bearer, which is a bad credential rather"
+            " than none",
+        )
 
     print("the latest release cannot be resolved")
     # A repository with no releases at all reaches this the same way: the
