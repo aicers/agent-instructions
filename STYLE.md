@@ -84,8 +84,7 @@ them was current, and the rule to bump it was enforced by nobody.
 - Keep headings unique within a block, and distinct from the headings in
   other blocks. Consumers set MD024 `siblings_only`, but overlapping
   headings across blocks confuse readers regardless.
-- Wrap any `@` in backticks. A consumer's `CLAUDE.md` imports
-  `AGENTS.md`, and Claude Code parses imported files for further
-  `@path` imports, skipping only code spans and fenced blocks. A bare
-  `@ts-ignore` in a block would send it looking for a file named
-  `ts-ignore`.
+- Wrap any `@` in backticks. Claude Code parses a consumer's
+  `AGENTS.md` for `@path` imports, skipping only code spans and fenced
+  blocks. A bare `@ts-ignore` in a block would send it looking for a
+  file named `ts-ignore`.
