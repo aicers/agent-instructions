@@ -42,6 +42,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   stays supported, so moving is a decision per repository. It is not
   free: the required check `Instructions / check` stops existing under
   that name, so branch protection has to be edited in the same change.
+- `giganto`, `hog`, and `piglet` join the roster, taking `workflow`,
+  `agentcoop`, `rust`, and `changelog` — the same list as every other
+  Rust repository here, since all three are Rust and keep a
+  `CHANGELOG.md`.
 
 ### Changed
 
