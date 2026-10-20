@@ -43,6 +43,18 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   free: the required check `Instructions / check` stops existing under
   that name, so branch protection has to be edited in the same change.
 
+### Changed
+
+- A consumer no longer carries the two-line `CLAUDE.md` that imported
+  `AGENTS.md`, and carries no `.claude/CLAUDE.md` or `CLAUDE.local.md`
+  either. Claude Code now reads `AGENTS.md` itself, but only when none
+  of those files exists in the working directory or above it, so a
+  Claude-only file added next to `AGENTS.md` would replace it and drop
+  every shared rule for Claude Code. If such a file is ever needed, it
+  imports `AGENTS.md`: `@AGENTS.md`, or `@../AGENTS.md` from
+  `.claude/CLAUDE.md`. A consumer that still has the old import keeps
+  working, because the import loads `AGENTS.md`.
+
 ## [0.4.0] - 2026-08-14
 
 ### Added

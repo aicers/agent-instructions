@@ -77,7 +77,7 @@ def main() -> int:
             if not in_fence and "@" in CODE_SPAN.sub("", line):
                 failures.append(
                     f"{where}:{number}: bare '@' — Claude Code parses "
-                    f"'@path' in an imported file as another import. "
+                    f"'@path' in AGENTS.md as an import. "
                     f"Wrap it in backticks."
                 )
             # The markers carry the block's name, and a block may be named

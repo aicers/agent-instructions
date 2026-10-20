@@ -8,9 +8,9 @@ repositories. One source of truth, fanned out into each repository's
 
 AI agents read instructions from the checked-out working tree, so the
 text has to be physically present in every repository. Central hosting
-alone does not work: a `CLAUDE.md` that points at a path outside the
-repository resolves only on one person's machine, and breaks in CI, in
-automation containers, and for every other contributor.
+alone does not work: an instruction file that points at a path outside
+the repository resolves only on one person's machine, and breaks in CI,
+in automation containers, and for every other contributor.
 
 So the copies stay. What this repository removes is the *manual* editing
 of those copies — and the silent divergence that follows.
@@ -63,24 +63,35 @@ action: the same check, reached as a step rather than as a job.
 Each consuming repository has:
 
 - `AGENTS.md` — the real file, containing the shared blocks plus its own
-  sections. Every agent that reads `AGENTS.md` gets it directly.
-- `CLAUDE.md` — the import, `@AGENTS.md`. Claude Code reads `CLAUDE.md`
-  and not `AGENTS.md`, and expands this import at session start, so the
-  two tools read one text rather than two copies. Anything
-  Claude-specific, should a repository ever need it, goes below the
-  import.
+  sections. Every agent reads it, Claude Code under the rule below.
 
-A symlink also works, and was the original plan here. The import wins on
-two counts: it needs no privileges on Windows, where a symlink degrades
-into a one-line text file and an agent silently reads a filename instead
-of any rules, and it leaves room for that Claude-only section.
+A consumer carries no `CLAUDE.md`, `.claude/CLAUDE.md` or
+`CLAUDE.local.md`. If one is ever needed, it imports `AGENTS.md`:
+`@AGENTS.md`, or `@../AGENTS.md` from `.claude/CLAUDE.md`, since an
+import resolves relative to the file that holds it.
 
-Measured on Claude Code 2.1.220, with file tools disabled so the agent
-could not simply open the file: a canary in `AGENTS.md` is invisible
-with neither mechanism in place, and loads with either. The markers
-themselves do not load — Claude Code strips block-level HTML comments
-before injecting the text, which is why they are HTML comments. They
-cost no context and the agent never sees them.
+Claude Code reads `AGENTS.md` only as a fallback: it loads a project's
+`AGENTS.md` when no `CLAUDE.md`, `.claude/CLAUDE.md` or
+`CLAUDE.local.md` exists in the working directory or any directory above
+it, the user's own `~/.claude/CLAUDE.md` aside. A Claude-only file added
+beside `AGENTS.md` therefore replaces it rather than adding to it, and
+every shared rule disappears for Claude Code without a warning; Codex,
+which reads `AGENTS.md` itself, is unaffected. The import keeps
+`AGENTS.md` in context whichever file Claude Code picks. Consumers used
+to carry exactly that import as a two-line `CLAUDE.md`, from when Claude
+Code read `CLAUDE.md` and never `AGENTS.md`; nothing needs it now. The
+fallback can also be turned off outside the repository, by a user or
+managed setting `instructionFiles: "claude-md"`, or by Claude Code's own
+remote feature flag.
+
+Measured on Claude Code 2.1.304, with file tools disabled so the agent
+could not simply open the file: with no `CLAUDE.md` present, a canary in
+`AGENTS.md` loads and an `@path` import in it is expanded; with a
+`CLAUDE.md` that does not import it, in the repository or a parent
+directory, or with a `CLAUDE.local.md`, the canary does not load. The
+markers themselves do not load — Claude Code strips block-level HTML
+comments before injecting the text, which is why they are HTML comments.
+They cost no context and the agent never sees them.
 
 One more file, `.agent-instructions.toml`, records which release of this
 repository the copies came from and which blocks they are:
@@ -551,19 +562,7 @@ unchanged.
 1. Add it to `repos.json` with the blocks it should consume.
 2. Restructure its `AGENTS.md`: convert bullets to `-`, drop section
    numbering, and insert the marker pairs where each block belongs.
-3. Write its `CLAUDE.md`:
-
-   ```markdown
-   <!-- markdownlint-disable-file MD041 -->
-   @AGENTS.md
-   ```
-
-   The lint directive is needed because a file whose first line is an
-   import has no top-level heading. It costs nothing — block-level HTML
-   comments are stripped before the text reaches context — and it does
-   not interfere with the import, which was measured rather than
-   assumed.
-4. Create its `.agent-instructions.toml`:
+3. Create its `.agent-instructions.toml`:
 
    ```toml
    ref = "0.1.0"
@@ -575,12 +574,12 @@ unchanged.
    check checks that ref out. Both drivers refuse a repository that
    consumes blocks without this file rather than leaving it floating, and
    neither reads a missing one as naming no blocks.
-5. Add the drift check to its CI — as a step in a job it already has,
+4. Add the drift check to its CI — as a step in a job it already has,
    or as a job of its own where there is none — and the calling workflow
    from [How a release reaches a
    repository](#how-a-release-reaches-a-repository) so the repository
    pulls every release from then on. Neither takes an input or a secret,
    and nothing has to be registered for either.
-6. Run `scripts/sync.sh <tag> <repo>` to fill the regions and set the
+5. Run `scripts/sync.sh <tag> <repo>` to fill the regions and set the
    pin now, rather than waiting for the first scheduled run. Running the
    caller's `workflow_dispatch` does the same thing from the other side.
