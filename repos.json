@@ -12,6 +12,9 @@
     "roxyd":           ["workflow", "agentcoop", "rust", "changelog"],
     "review-protocol": ["workflow", "agentcoop", "rust", "changelog"],
     "deploy-core":     ["workflow", "agentcoop", "rust", "changelog"],
+    "giganto":         ["workflow", "agentcoop", "rust", "changelog"],
+    "hog":             ["workflow", "agentcoop", "rust", "changelog"],
+    "piglet":          ["workflow", "agentcoop", "rust", "changelog"],
     "agentcoop":       ["workflow", "agentcoop", "node", "changelog"],
     "aice-web-next":   ["workflow", "agentcoop", "node", "db-migrations", "changelog"],
     "aimer-web":       ["workflow", "agentcoop", "node", "db-migrations", "changelog"]
