@@ -8,6 +8,18 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- The `rust` block forbids changing process-wide state in tests — such
+  as the working directory, the umask, the locale and signal handlers as
+  well as the environment — because `cargo test` runs tests as threads
+  in one process and a change is visible to every test beside it. The
+  block already forbade `set_var`, but on the grounds of undefined
+  behaviour, which does not reach the umask or the working directory,
+  so a test changing those satisfied every stated rule while still
+  disturbing its neighbours. Where the behaviour under test depends on
+  such a value and it cannot be passed in, the block says to re-run
+  that test in a child process with `--exact`, change the value only
+  there, and have the parent check that the child ran exactly one test,
+  since libtest reports a filter that matched nothing as a success.
 - The drift check is available as a composite action,
   `aicers/agent-instructions/check-drift@main`, so a repository can run
   it as a step inside a job it already has rather than as a job of its
