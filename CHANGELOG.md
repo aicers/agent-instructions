@@ -23,9 +23,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   since verification looks for the owner of missing work among the
   issue's open siblings and the issues that mention it. On a pull
   request, an issue of the same repository is mentioned only when the
-  pull request delivers it, as `Closes #N` or `Part of #N` in the body,
-  and a commit message names only the issue the commit delivers, since
-  each amend or rebase posts again.
+  pull request delivers it, as `Closes #N` or `Part of #N` in the body.
+
+### Changed
+
+- The `workflow` block now has a commit message reference only the
+  issue the commit delivers, since each amend or rebase of the commit
+  posts another entry on the timeline of every issue its message names.
 
 ## [0.4.1] - 2026-10-20
 

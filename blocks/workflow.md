@@ -65,11 +65,12 @@
   - **Yes: link it.** Use `#N` within the repository and `owner/repo#N`
     across repositories. This covers closes, part of, depends on or
     blocks, follow-up of, taking over part of its work, parent or
-    child, and supersedes or duplicates, on a pull request only as the
-    bullet below allows. An issue that takes over part of another's work
-    links it: when AgentCoop's verification finds work missing from an
-    issue, it looks for an owner only among that issue's open siblings
-    and the issues of its repository that mention it.
+    child, and supersedes or duplicates. On a pull request, the
+    narrower bullet below applies. An issue that takes over part of
+    another's work links it: when AgentCoop's verification finds
+    work missing from an issue, it looks for an owner only among that
+    issue's open siblings and the issues of its repository that
+    mention it.
   - **No: use a form that posts no entry.** A PR as its
     `https://github.com/owner/repo/pull/N/files` URL; a commit as its
     SHA and title; a range of commits as one
@@ -92,9 +93,11 @@
   and an agent judges from its title and body whether it delivered that
   issue; a `Part of #N` link is the only trace a partial delivery
   leaves. State any other relationship in the issue.
-- Leave the references AgentCoop writes as they are: its children
-  roster, its dependency lines and its issue-sync list. It reads some
-  of them back, and its verification walks the entries they post.
+- Leave the references in the sections AgentCoop writes as they are:
+  `## Children`, `## Dependencies` and `## Execution order` in the
+  issues it files, and `## Implementation deviations`, between its HTML
+  comment markers, in any issue it implements. It reads some of them
+  back, and its verification walks the entries they post.
 
 ## Markdown lint configuration
 
