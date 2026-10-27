@@ -4,6 +4,26 @@ This file documents recent notable changes to this project. The format of this
 file is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- The `workflow` block says how to refer to another issue or pull
+  request. Every form GitHub recognizes as a reference — `#N`,
+  `owner/repo#N`, a URL, or a link to one — posts an entry on the
+  target's timeline, and editing or deleting the text does not remove
+  it. Those entries cost the target's owners a look, and AgentCoop's
+  verification reads them: a merged pull request that mentions an issue
+  anywhere becomes a candidate an agent judges for having delivered it.
+  So the block asks one question of each reference, whether the other
+  side then has something to do or to avoid. A yes is linked; a no is
+  written in a form that posts nothing, such as a pull request's
+  `/files` URL, a commit SHA, a compare URL, or an issue's URL in a
+  code span. On a pull request, an issue of the same repository is
+  mentioned only when the pull request delivers it, as `Closes #N` or
+  `Part of #N` in the body, and a commit message names only the issue
+  the commit delivers, since each amend or rebase posts again.
+
 ## [0.4.1] - 2026-10-20
 
 ### Added
@@ -401,6 +421,7 @@ contract has never run in a consumer once.
   and would leave every pull request pinned to one release and filled from
   another. `scripts/test_sync.py` covers it.
 
+[Unreleased]: https://github.com/aicers/agent-instructions/compare/0.4.1...main
 [0.4.1]: https://github.com/aicers/agent-instructions/compare/0.4.0...0.4.1
 [0.4.0]: https://github.com/aicers/agent-instructions/compare/0.3.1...0.4.0
 [0.3.1]: https://github.com/aicers/agent-instructions/compare/0.3.0...0.3.1
