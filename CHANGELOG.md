@@ -24,6 +24,9 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   issue's open siblings and the issues that mention it. On a pull
   request, an issue of the same repository is mentioned only when the
   pull request delivers it, as `Closes #N` or `Part of #N` in the body.
+- `giganto-client` joins the roster, taking `workflow`, `agentcoop`,
+  `rust`, and `changelog` — the same list as every other Rust
+  repository here, since it is Rust and keeps a `CHANGELOG.md`.
 
 ### Changed
 
