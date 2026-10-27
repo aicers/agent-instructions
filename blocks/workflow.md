@@ -64,8 +64,12 @@
   does it give them something to do or something to avoid?
   - **Yes: link it.** Use `#N` within the repository and `owner/repo#N`
     across repositories. This covers closes, part of, depends on or
-    blocks, follow-up of, parent or child, and supersedes or
-    duplicates, on a pull request only as the bullet below allows.
+    blocks, follow-up of, taking over part of its work, parent or
+    child, and supersedes or duplicates, on a pull request only as the
+    bullet below allows. An issue that takes over part of another's work
+    links it: when AgentCoop's verification finds work missing from an
+    issue, it looks for an owner only among that issue's open siblings
+    and the issues of its repository that mention it.
   - **No: use a form that posts no entry.** A PR as its
     `https://github.com/owner/repo/pull/N/files` URL; a commit as its
     SHA and title; a range of commits as one

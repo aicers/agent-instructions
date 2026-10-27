@@ -19,10 +19,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   side then has something to do or to avoid. A yes is linked; a no is
   written in a form that posts nothing, such as a pull request's
   `/files` URL, a commit SHA, a compare URL, or an issue's URL in a
-  code span. On a pull request, an issue of the same repository is
-  mentioned only when the pull request delivers it, as `Closes #N` or
-  `Part of #N` in the body, and a commit message names only the issue
-  the commit delivers, since each amend or rebase posts again.
+  code span. An issue that takes over part of another's work links it,
+  since verification looks for the owner of missing work among the
+  issue's open siblings and the issues that mention it. On a pull
+  request, an issue of the same repository is mentioned only when the
+  pull request delivers it, as `Closes #N` or `Part of #N` in the body,
+  and a commit message names only the issue the commit delivers, since
+  each amend or rebase posts again.
 
 ## [0.4.1] - 2026-10-20
 
