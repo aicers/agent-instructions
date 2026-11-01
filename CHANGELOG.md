@@ -12,6 +12,15 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `agentcoop`, `rust`, and `changelog` — the same list as every other
   Rust repository here, since both are Rust and keep a `CHANGELOG.md`.
 
+### Changed
+
+- The `node` block's advice to prefer the `package.json` scripts is now
+  limited to linting, formatting and type checking, like the `rust`
+  block's rules. It used to say the scripts "encode the exact gates CI
+  runs", which could be read as asking for every CI script, tests
+  included, to be run locally; which tests run locally is for each
+  repository's own instructions to say.
+
 ## [0.4.2] - 2026-10-27
 
 ### Added
