@@ -3,16 +3,17 @@
 
 - This project uses **pnpm** exclusively. NEVER use `npm`, `bun`, `yarn`,
   or any other package manager.
-- Run CLI tools through `pnpm`, preferring the `package.json` scripts over
-  hand-written equivalents — the scripts encode the exact gates CI runs.
-  NEVER use `npx`: where the name is not already installed it resolves and
-  installs a remote package instead of failing, so a typo or a dependency
-  someone dropped becomes a silent download. Run a project dependency with
-  `pnpm exec <tool>`. Run a one-off that is deliberately not a dependency
-  — a scaffolder, a utility a scheduled job reaches for — with
-  `pnpm dlx <tool>@<version>`, naming an exact version and never a
-  dist-tag: `@latest` pins nothing, so a scheduled run executes whatever
-  was published since the last one.
+- Run CLI tools through `pnpm`. For linting, formatting and type checking,
+  prefer the `package.json` scripts over hand-written equivalents: a script
+  runs the tool with the options and configuration CI uses. NEVER use `npx`:
+  where the name is not already installed it resolves and installs a remote
+  package instead of failing, so a typo or a dependency someone dropped
+  becomes a silent download. Run a project dependency with
+  `pnpm exec <tool>`. Run a one-off that is deliberately not a dependency —
+  a scaffolder, a utility a scheduled job reaches for — with
+  `pnpm dlx <tool>@<version>`, naming an exact version and never a dist-tag:
+  `@latest` pins nothing, so a scheduled run executes whatever was published
+  since the last one.
 - Install with the lockfile as the authority — CI runs
   `pnpm install --frozen-lockfile`, so a `package.json` change that never
   reached `pnpm-lock.yaml` fails there instead of resolving to something
