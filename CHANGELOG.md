@@ -4,6 +4,33 @@ This file documents recent notable changes to this project. The format of this
 file is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `estore` and `estore-protocol` join the roster, taking `workflow`,
+  `agentcoop`, `rust`, and `changelog` — the same list as every other
+  Rust repository here. Both are planned Rust projects with no code yet.
+  The `rust` and `changelog` blocks are there from the start, so that
+  their rules are in place when the first code and the first release
+  land.
+- `taco` joins the roster, taking `workflow`, `agentcoop`, and
+  `changelog`. It holds Python and shell test scenarios and campaign
+  documents, and has no Rust or Node code.
+
+### Removed
+
+- The `workflow` block no longer says which language to write in. It
+  used to require English for code, comments, commit messages, pull
+  requests, and issues in every repository. Each repository now states
+  its own choice, in a `## Language` section of its `AGENTS.md` outside
+  the shared markers. The section names a language for each of three
+  things: code comments; commit messages; and GitHub issue and pull
+  request bodies and the comments on them. Add that section in the same
+  change that applies this release. Before it, the old block's
+  `## Language` heading would sit beside it, and MD024 rejects two. After
+  it, the repository would state no language at all.
+
 ## [0.4.3] - 2026-11-01
 
 ### Added
@@ -448,6 +475,7 @@ contract has never run in a consumer once.
   and would leave every pull request pinned to one release and filled from
   another. `scripts/test_sync.py` covers it.
 
+[Unreleased]: https://github.com/aicers/agent-instructions/compare/0.4.3...main
 [0.4.3]: https://github.com/aicers/agent-instructions/compare/0.4.2...0.4.3
 [0.4.2]: https://github.com/aicers/agent-instructions/compare/0.4.1...0.4.2
 [0.4.1]: https://github.com/aicers/agent-instructions/compare/0.4.0...0.4.1
