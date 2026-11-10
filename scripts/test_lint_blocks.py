@@ -28,6 +28,8 @@ ROSTER = {
     "target": "AGENTS.md",
     "repos": {
         "bootroot": ["demo"],
+        "estore": ["demo"],
+        "estore-protocol": ["demo"],
         "review": ["demo"],
         "review-database": ["demo"],
         "agentcoop": ["demo"],
@@ -99,6 +101,17 @@ def main() -> int:
     print("a repository name that is not an ordinary word")
     result = lint("demo", "## Demo\n\n- bootroot does it this way\n")
     check(result.returncode != 0, "fails on a bare mention in prose")
+    result = lint("demo", "## Demo\n\n- restore the original body\n")
+    check(result.returncode == 0, "passes when the name is inside a word")
+    result = lint("demo", "## Demo\n\n- see aicers/estore for it\n")
+    check(result.returncode != 0, "fails when the name is org-qualified")
+    result = lint("demo", "## Demo\n\n- use estore_protocol::Client\n")
+    check(
+        result.returncode != 0 and "'estore-protocol'" in result.stdout,
+        "fails on a crate path spelling the hyphen as an underscore",
+    )
+    result = lint("demo", "## Demo\n\n- the bootroot-agent binary\n")
+    check(result.returncode != 0, "fails on a name with a suffix")
 
     print("the rest of the authoring rules")
     result = lint("demo", "## Demo\n\n- " + "x" * 80 + "\n")

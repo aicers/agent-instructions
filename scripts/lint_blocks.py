@@ -18,18 +18,25 @@ ROOT = Path(__file__).resolve().parent.parent
 CODE_SPAN = re.compile(r"`[^`]*`")
 
 # Repository names that are also ordinary English words. The rule is that
-# a block must not *name a repository*, and for these the plain substring
+# a block must not *name a repository*, and for these even a whole-word
 # match cannot tell that from a block using the word: `review` joined the
-# roster while blocks were already free to say "reviewer". Naming one of
-# these reads as `aicers/review` or as a code span, so that is what is
-# looked for; the word itself is left alone.
+# roster while blocks were already free to say "a review comment". Naming
+# one of these reads as `aicers/review` or as a code span, so that is
+# what is looked for; the word itself is left alone.
 WORD_LIKE_REPOS = frozenset({"review"})
 
 
 def names_repository(line: str, repo: str, org: str) -> bool:
     """Does this line name the repository, rather than merely contain it?"""
     if repo not in WORD_LIKE_REPOS:
-        return repo in line
+        # The name with no letter or digit run on to it, so `estore` is
+        # not found in "restore". A hyphen or underscore may follow it --
+        # `bootroot-agent` and `giganto_client::` both name a repository
+        # -- and a hyphen in the name matches an underscore too, which is
+        # how a crate path spells it.
+        name = "[-_]".join(re.escape(part) for part in repo.split("-"))
+        whole = rf"(?<![A-Za-z0-9]){name}(?![A-Za-z0-9])"
+        return re.search(whole, line) is not None
     qualified = rf"{re.escape(org)}/{re.escape(repo)}(?![\w-])"
     if re.search(qualified, line):
         return True

@@ -26,14 +26,16 @@ The test is substitution, not vocabulary. If every consumer would carry
 the same sentence, the name is fine; if one of them would need a different
 one, it belongs in that repository's own sections.
 
-The linter matches every name in `repos.json` against every line, and
-exempts two things that would otherwise be false positives. A block's own
-markers carry its name, and a block may be named after a repository, so
-the markers are not searched — which name they may carry is already
+The linter matches every name in `repos.json` against every line, as a
+name with no letter or digit run on to it, so `estore` is not found in
+"restore" while `bootroot-agent` and `giganto_client::` are both caught.
+It exempts two things that would otherwise be false positives. A block's
+own markers carry its name, and a block may be named after a repository,
+so the markers are not searched — which name they may carry is already
 settled against the filename. And a roster name that is also an ordinary
 English word is flagged only when it is org-qualified or sits in a code
-span: `review` became a repository long after blocks were free to say
-"reviewer", and a substring match cannot tell the two apart.
+span: `review` became a repository long after blocks were free to say "a
+review comment", and a word match cannot tell the two apart.
 
 ## What earns its own block
 
