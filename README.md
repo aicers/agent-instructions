@@ -139,6 +139,20 @@ everything outside them belongs to the repository:
 Repository-specific commands, paths, and gates go here.
 ```
 
+Each consumer's `AGENTS.md` also has a hand-written `## Language`
+section outside the markers. No block says which language to write in,
+because the repositories do not agree. The section names a language for
+each of three things: code comments; commit messages; and GitHub issue
+and pull request bodies and the comments on them.
+
+```markdown
+## Language
+
+- Code comments: English.
+- Commit messages: English.
+- GitHub issue and pull request bodies, and comments on them: English.
+```
+
 Blocks are deliberately repository-neutral, so anything naming a path, a
 product, or a command lives in the repository's own sections. The Rust
 block's certificate-verification rule, for instance, says verification
@@ -562,6 +576,8 @@ unchanged.
 1. Add it to `repos.json` with the blocks it should consume.
 2. Restructure its `AGENTS.md`: convert bullets to `-`, drop section
    numbering, and insert the marker pairs where each block belongs.
+   Write its `## Language` section outside the markers, as [the
+   consumer contract](#the-consumer-contract) describes.
 3. Create its `.agent-instructions.toml`:
 
    ```toml
