@@ -1,0 +1,89 @@
+name: Change scope
+description: >-
+  Decide whether this run's change touches documentation only, so that a
+  workflow can skip its expensive jobs on a documentation-only change.
+
+# Composite action. A consuming repository runs it in its change-filter
+# job and gates its expensive jobs on the output:
+#
+#   changes:
+#     name: Change Filter
+#     outputs:
+#       docs_only: ${{ steps.scope.outputs.docs-only }}
+#     steps:
+#       - uses: actions/checkout@v5
+#         with:
+#           fetch-depth: 0
+#       - id: scope
+#         uses: aicers/agent-instructions/change-scope@main
+#         with:
+#           docs-paths: |
+#             docs/**
+#           not-docs-paths: |
+#             docs/reference/**
+#
+# The decision lives in `scope.sh` beside this file. This file only hands
+# it the event context and the inputs as environment variables: never as
+# `${{ }}` inside `run:`, because a branch name can hold shell syntax and
+# would otherwise be pasted into the script.
+#
+# `@main`, as with `check-drift`. The decision is mechanism and comes from
+# here; which paths count as documentation is content and comes from the
+# caller's inputs. Pinning this to a release would mean editing every
+# consumer's workflow to fix the decision.
+#
+# The action does not fetch. Check out with `fetch-depth: 0`; a shallow
+# checkout, a missing remote-tracking branch, or anything else it cannot
+# establish ends in docs-only=false with a warning, never in a skipped
+# test.
+
+inputs:
+  docs-paths:
+    description: >-
+      Paths to count as documentation in addition to the built-in list,
+      one git glob pathspec per line.
+    required: false
+    default: ""
+  not-docs-paths:
+    description: >-
+      Paths never to count as documentation even when a documentation
+      pattern matches them, one per line.
+    required: false
+    default: ""
+  dispatch-full:
+    description: >-
+      "true" makes every workflow_dispatch run the full suite.
+    required: false
+    default: "false"
+
+outputs:
+  docs-only:
+    description: >-
+      "true" when every changed path is documentation; "false" otherwise,
+      including whenever the change could not be classified.
+    value: ${{ steps.scope.outputs.docs-only }}
+  docs-touched:
+    description: >-
+      "true" when any changed path is documentation, or when the change
+      could not be classified.
+    value: ${{ steps.scope.outputs.docs-touched }}
+
+runs:
+  using: composite
+  steps:
+    - id: scope
+      shell: bash
+      env:
+        CS_EVENT: ${{ github.event_name }}
+        CS_REF_TYPE: ${{ github.ref_type }}
+        CS_REF_NAME: ${{ github.ref_name }}
+        CS_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        CS_BASE_REF: ${{ github.base_ref }}
+        CS_PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        CS_BEFORE: ${{ github.event.before }}
+        CS_SHA: ${{ github.sha }}
+        CS_DOCS_PATHS: ${{ inputs.docs-paths }}
+        CS_NOT_DOCS_PATHS: ${{ inputs.not-docs-paths }}
+        CS_DISPATCH_FULL: ${{ inputs.dispatch-full }}
+        SCOPE_SH: ${{ github.action_path }}/scope.sh
+      run: bash "$SCOPE_SH"
