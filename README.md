@@ -36,6 +36,8 @@ blocks/         the shared regions, one file per block
 repos.json      which repository consumes which blocks
 check-drift/    the drift check as a composite action, for a consumer
                 that would rather run it as a step than as a job
+change-scope/   decide whether a run's change is documentation only, as a
+                composite action for a consumer's change-filter job
 scripts/
   render.py       apply, verify, list, or retire a block in one file
   pin_file.py     read or write a consumer's .agent-instructions.toml
@@ -570,6 +572,104 @@ outcome pinning exists to prevent — which the workflow says with
 `scripts/warn_behind.sh` exits 0 on every path instead. The failure is
 still in the log; nothing marks the run. The half that matters is
 unchanged.
+
+## Deciding change scope
+
+`change-scope/` answers one question for a consumer's CI: does this run's
+change touch documentation only? A workflow puts the answer in front of
+its expensive jobs, so a pull request that edits a README does not build
+and test the code. The action runs as a step in the change-filter job:
+
+```yaml
+changes:
+  name: Change Filter
+  runs-on: ubuntu-latest
+  permissions:
+    contents: read
+  outputs:
+    docs_only: ${{ steps.scope.outputs.docs-only }}
+  steps:
+    - uses: actions/checkout@v5
+      with:
+        fetch-depth: 0
+    - id: scope
+      uses: aicers/agent-instructions/change-scope@main
+      with:
+        docs-paths: |
+          docs/**
+          **/*.md
+        not-docs-paths: |
+          docs/reference/**
+```
+
+and each expensive job runs unless the filter positively said otherwise:
+
+```yaml
+if: >-
+  ${{ !cancelled() && (needs.changes.result != 'success'
+      || needs.changes.outputs.docs_only != 'true') }}
+```
+
+The inputs:
+
+- `docs-paths` adds paths to the built-in documentation list, which is
+  `*.md` (the repository root only), `LICENSE`,
+  `.agent-instructions.toml` and `.markdownlint*`.
+- `not-docs-paths` holds paths that never count as documentation, even
+  when a documentation pattern matches them: Markdown a test reads, say.
+- `dispatch-full: "true"` makes every `workflow_dispatch` run everything,
+  for a workflow whose dispatch inputs choose what to run.
+
+Each list takes one git `:(glob)` pathspec per line: `*` does not cross
+`/`, and `**/` matches zero or more directories. Blank lines and `#`
+lines are skipped. A line starting with `:`, `/`, `-` or `!`, or holding
+`..`, a quote, `{`, `[` or `?`, makes the run run everything: such a
+line is most often a dorny filter entry copied over with its `- "..."`
+still on it, which would otherwise match nothing and quietly change what
+counts as documentation.
+
+The outputs:
+
+- `docs-only` is `true` when at least one path changed, every changed
+  path is documentation, and none is held back by `not-docs-paths`.
+- `docs-touched` is `true` when any changed path is documentation,
+  without subtracting `not-docs-paths`, for a job that should run only
+  when documentation changed.
+
+What a run's change is depends on the event, by one rule: a branch's
+change runs from its merge-base with the branch it is headed for to its
+head, and the default branch's change runs from `before` to `after`.
+
+- `pull_request` compares the pull request's head, not the merge commit,
+  with its merge-base with the target branch. `main` moving on after the
+  pull request opened does not count against it, and a stacked pull
+  request is compared with the branch it targets.
+- `push` to the default branch compares `before` with `after`. A push to
+  another branch compares it with its merge-base with the default
+  branch, so a branch's first push, whose `before` is all zeros, is still
+  judged.
+- `workflow_dispatch` on another branch compares it with its merge-base
+  with the default branch. That is the run AgentCoop starts for a
+  conflicting pull request, which GitHub gives no `pull_request` run.
+- `workflow_dispatch` on the default branch, any tag, `schedule`, and
+  every other event run everything. Dispatching on `main` is how a person
+  asks for the whole suite.
+
+Everything it cannot establish runs everything: a shallow checkout, a
+missing `origin/<branch>`, no merge-base, a default-branch push whose
+`before` is all zeros or gone after a force-push, an empty diff, an
+unreadable path list, and any git call that fails. It
+says why in a `::warning::`, sets `docs-only=false` and
+`docs-touched=true`, and still succeeds, so a broken filter costs runner
+time rather than a skipped test. It never fetches: `fetch-depth: 0`
+already brings every branch and the pull request's head.
+
+`@main`, as with `check-drift`, for the same reason: the decision is
+mechanism and comes from here, while which paths count is content and
+comes from the caller's inputs. It runs under whichever `bash` is first
+on the runner's `PATH`, on hosted runners and on the self-hosted Linux
+and macOS ones, and it is written for bash 3.2, the oldest of those: CI
+runs its tests under macOS `/bin/bash`, which is 3.2 with BSD tools.
 
 ## Onboarding a repository
 

@@ -1,20 +1,46 @@
 name: CI
 
+# `workflow_dispatch` takes no inputs. It is what lets a conflicting pull
+# request's head be tested at all -- GitHub creates no `pull_request` run
+# while a pull request conflicts -- and what a person uses to run the
+# suite on a branch by hand.
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+
+# One group per ref, and a newer run cancels the one in progress: a new
+# push to a pull request, or the next merge to `main`. A dispatched run
+# gets a group of its own per ref, so it neither cancels nor is cancelled
+# by push and pull-request runs. A re-run (`run_attempt` other than 1)
+# gets a group of its own per run, so re-running a cancelled `main` run to
+# find which merge broke it does not cancel the run in progress, and the
+# next merge does not cancel it either.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}${{ github.event_name == 'workflow_dispatch' && '-dispatch' || (github.run_attempt != '1' && format('-rerun-{0}', github.run_id) || '') }}
+  cancel-in-progress: true
 
 jobs:
-  check:
+  # The Markdown lint on its own, outside `check`, so that a failing test
+  # script cannot hide a lint result and the other way round. The
+  # repository-root `.markdownlint-cli2.yaml` decides what is linted; the
+  # action is given no `globs`, which would be added to the configured
+  # ones rather than replace them. No drift check: this repository is the
+  # source of the blocks, not a consumer of them.
+  markdown:
+    name: Markdown
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - name: Lint Markdown
-        uses: DavidAnson/markdownlint-cli2-action@v24
-        with:
-          globs: "**/*.md"
+        uses: DavidAnson/markdownlint-cli2-action@v25
+
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
       - name: Test render.py
         run: python3 scripts/test_render.py
@@ -303,3 +329,97 @@ jobs:
       # what leaves the warning as the only thing that could fail it.
       - name: Run the action with the warning's network call broken
         uses: ./source/check-drift
+
+  # `change-scope/` decides for every consumer whether a run may skip its
+  # tests, and it runs on self-hosted Linux and macOS runners as well as
+  # hosted ones. So it is exercised here on both operating systems, and on
+  # macOS under the system `/bin/bash`, which is bash 3.2 with BSD tools:
+  # a bash 4 construct would pass on Linux and break every macOS caller.
+  # `scripts/test_change_scope.py` builds throwaway repositories and runs
+  # `scope.sh` directly with the variables the action passes; the last
+  # step runs the action itself once, on this run's real event.
+  change-scope:
+    name: Exercise the change-scope action
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Confirm which bash the tests use
+        run: |
+          set -euo pipefail
+          # Single quotes on purpose: the child bash expands it, not this one.
+          # shellcheck disable=SC2016
+          version=$(/bin/bash -c 'echo "$BASH_VERSION"')
+          echo "/bin/bash is $version"
+          if [ "$RUNNER_OS" = macOS ]; then
+            case "$version" in
+              3.2*) ;;
+              *)
+                echo "::error::/bin/bash on macOS is $version, not 3.2;" \
+                     "the bash 3.2 tests would not be testing bash 3.2"
+                exit 1
+                ;;
+            esac
+          fi
+
+      - name: Test scope.sh
+        env:
+          SCOPE_BASH: /bin/bash
+        run: python3 scripts/test_change_scope.py
+
+      - name: Run the action on this event
+        id: smoke
+        uses: ./change-scope
+
+      - name: Confirm the action set both outputs
+        env:
+          DOCS_ONLY: ${{ steps.smoke.outputs.docs-only }}
+          DOCS_TOUCHED: ${{ steps.smoke.outputs.docs-touched }}
+        run: |
+          set -euo pipefail
+          echo "docs-only=$DOCS_ONLY docs-touched=$DOCS_TOUCHED"
+          for value in "$DOCS_ONLY" "$DOCS_TOUCHED"; do
+            case "$value" in
+              true | false) ;;
+              *)
+                echo "::error::the action left an output unset or malformed"
+                exit 1
+                ;;
+            esac
+          done
+
+  # The one check `main` requires once this repository's required checks
+  # are switched over, and the only way to require a matrix job: a job
+  # skipped by its own `if:` reports its unexpanded name, which a rule
+  # waiting on an expanded one would wait on forever. `always()` rather
+  # than `!cancelled()`, so that a cancelled run reports a failed gate
+  # instead of none. No change filter runs here, so there is no filter
+  # result to assert.
+  gate:
+    name: CI Gate
+    runs-on: ubuntu-latest
+    permissions: {}
+    needs: [markdown, check, action, change-scope]
+    if: ${{ always() }}
+    steps:
+      - name: Assert every job passed or was skipped
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          echo "${RESULTS}"
+          bad="$(printf '%s' "${RESULTS}" \
+            | jq -r 'to_entries[]
+                     | select(.value.result != "success" and .value.result != "skipped")
+                     | "  \(.key): \(.value.result)"')"
+          if [ -n "${bad}" ]; then
+            echo "Not green:" >&2
+            echo "${bad}" >&2
+            exit 1
+          fi

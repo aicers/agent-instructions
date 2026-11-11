@@ -4,6 +4,20 @@ This file documents recent notable changes to this project. The format of this
 file is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `change-scope`, a composite action that decides whether a CI run's
+  change touches documentation only, so that a consumer can skip its
+  expensive jobs on a documentation-only pull request. A consumer calls
+  `aicers/agent-instructions/change-scope@main` in its change-filter job
+  and passes its own `docs-paths` and `not-docs-paths`; the action
+  compares a pull request's head with its merge-base, a push to the
+  default branch with `before`, and a dispatched branch with its
+  merge-base with the default branch, and runs everything whenever it
+  cannot tell.
+
 ## [0.5.0] - 2026-11-10
 
 ### Added
@@ -475,6 +489,7 @@ contract has never run in a consumer once.
   and would leave every pull request pinned to one release and filled from
   another. `scripts/test_sync.py` covers it.
 
+[Unreleased]: https://github.com/aicers/agent-instructions/compare/0.5.0...main
 [0.5.0]: https://github.com/aicers/agent-instructions/compare/0.4.3...0.5.0
 [0.4.3]: https://github.com/aicers/agent-instructions/compare/0.4.2...0.4.3
 [0.4.2]: https://github.com/aicers/agent-instructions/compare/0.4.1...0.4.2
