@@ -423,3 +423,11 @@ jobs:
             echo "${bad}" >&2
             exit 1
           fi
+
+  # Temporary, for the RFC 0001 §7.4 rerun-group check only. This pull
+  # request is a draft and is closed without merging.
+  hold:
+    name: Hold (rerun-group check, do not merge)
+    runs-on: ubuntu-latest
+    steps:
+      - run: sleep 300
