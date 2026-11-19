@@ -107,20 +107,7 @@ blocks = ["workflow", "rust"]
 
 The drift check reads both keys, and the apply rewrites them. `repos.json`
 here says which blocks a repository *should* consume; this file records
-what it *does* carry.
-
-A name in either list is `<block>`, or `<block>:<variant>` for a block
-that has more than one text — `commit-messages:conventional`, say. Each
-half is letters, digits, `-` and `_`; a name spelled with a `.`, such as
-`changelog.generated`, is malformed everywhere a name is read, rather
-than taken for a block of its own. The region in `AGENTS.md` is always
-`shared:<block>`, whichever text it holds. The text comes from
-`blocks/<block>.<variant>.md` when a variant is named and from
-`blocks/<block>.md` when none is, so a repository whose rules differ from
-the rest — one that writes Conventional Commits titles, say — takes a
-different file into the same region rather than a block of its own.
-Switching variants rewrites what is between the markers and leaves the
-markers where they are. It sits outside `.github/` because nothing about it
+what it *does* carry. It sits outside `.github/` because nothing about it
 is GitHub's, and it has to sit outside `.github/workflows/` — that is the
 one directory a repository's own automation may not write, and keeping the
 pin out of it is what spares every consumer a credential of its own.
@@ -136,6 +123,19 @@ Every repository was carried onto the current path by an ordinary apply,
 so `pin_file.py` reads that one path and nothing else. A checkout
 restored from a branch older than the move fails naming the file to
 create, rather than being read from a path no driver writes.
+
+A name in either list is `<block>`, or `<block>:<variant>` for a block
+that has more than one text — `commit-messages:conventional`, say. Each
+half is letters, digits, `-` and `_`; a name spelled with a `.`, such as
+`changelog.generated`, is malformed everywhere a name is read, rather
+than taken for a block of its own. The region in `AGENTS.md` is always
+`shared:<block>`, whichever text it holds. The text comes from
+`blocks/<block>.<variant>.md` when a variant is named and from
+`blocks/<block>.md` when none is, so a repository whose rules differ from
+the rest — one that writes Conventional Commits titles, say — takes a
+different file into the same region rather than a block of its own.
+Switching variants rewrites what is between the markers and leaves the
+markers where they are.
 
 Inside `AGENTS.md`, the shared regions are delimited by markers and
 everything outside them belongs to the repository:

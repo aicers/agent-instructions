@@ -6,9 +6,9 @@
 
 `ref` is the release of aicers/agent-instructions the repository carries;
 `blocks` are the shared blocks it has, each as `<block>` or
-`<block>:<variant>` -- `commit-messages:conventional`, say. The drift check reads both — the
-ref decides what the comparison runs against, the list decides what is
-compared at all — and the apply rewrites both.
+`<block>:<variant>` -- `commit-messages:conventional`, say. The drift
+check reads both — the ref decides what the comparison runs against, the
+list decides what is compared at all — and the apply rewrites both.
 
 The file exists so that neither value lives in `.github/workflows/`.
 GitHub refuses a push touching that directory when it is authenticated
