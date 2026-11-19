@@ -27,6 +27,13 @@
 #
 # Repositories whose blocks are already current are skipped.
 #
+# The pull request, and the commit on it, are titled
+# `chore: update shared instruction blocks to <tag>` in a repository whose
+# default branch has moved to Conventional titles -- it holds one of the
+# marker files `scripts/apply_title.py` names -- and
+# `Update shared instruction blocks to <tag>` in any other.
+# `apply.yml` titles its pull requests through the same script.
+#
 # Written for bash 3.2, the version macOS ships.
 
 set -euo pipefail
@@ -123,6 +130,11 @@ sys.exit(0 if sys.argv[2] in json.load(open(sys.argv[1]))["repos"] else 1)' \
 
   blocks=$(python3 "$root/scripts/pin_file.py" read "$clone" blocks)
 
+  # Judged on the clone's HEAD, which is the default branch it was cloned
+  # on: the branch below has not been made yet, and the marker that
+  # decides is one the repository has merged.
+  title=$(python3 "$root/scripts/apply_title.py" "$clone" HEAD "$label")
+
   # `status --porcelain` rather than `diff --quiet`, which reports on
   # tracked files only. A repository being moved onto a new pin path, or
   # onboarded onto one it has never had, differs from the release in a
@@ -135,6 +147,7 @@ sys.exit(0 if sys.argv[2] in json.load(open(sys.argv[1]))["repos"] else 1)' \
   fi
 
   if $dry_run; then
+    echo "    title: $title"
     git -C "$clone" --no-pager diff --stat
     git -C "$clone" status --porcelain --untracked-files=all \
       | grep '^??' || true
@@ -146,7 +159,7 @@ sys.exit(0 if sys.argv[2] in json.load(open(sys.argv[1]))["repos"] else 1)' \
   # `add -A` for the same reason: `commit -a` would leave an untracked pin
   # behind and push blocks with nothing recording which release they are.
   git -C "$clone" add -A
-  git -C "$clone" commit -qm "Update shared instruction blocks to $label
+  git -C "$clone" commit -qm "$title
 
 Synced from $org/agent-instructions at $label, which the drift check is
 now pinned to. Do not edit the marked blocks in this repository; change
@@ -155,7 +168,7 @@ them upstream, tag a release, and re-run the sync."
 
   gh pr create -R "$org/$repo" \
     --head "$branch" \
-    --title "Update shared instruction blocks to $label" \
+    --title "$title" \
     --body "Synced from \`$org/agent-instructions\` by \`scripts/sync.sh\`.
 
 Blocks in this pull request: $blocks

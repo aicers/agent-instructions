@@ -69,6 +69,14 @@ jobs:
       - name: Test fetch_blocks.sh
         run: python3 scripts/test_fetch_blocks.py
 
+      # Needs `node` as well as `grep`: the rule is read by JavaScript too,
+      # and every title in it is put through all three engines.
+      - name: Test pattern.txt and the conventional-title action
+        run: python3 scripts/test_conventional_title.py
+
+      - name: Test apply.yml
+        run: python3 scripts/test_apply_workflow.py
+
       - name: Verify the action and the workflow still agree
         run: python3 scripts/test_action_parity.py
 
@@ -416,6 +424,212 @@ jobs:
             esac
           done
 
+  # `conventional-title/action.yml` is called `@main` by every repository
+  # that has moved to Conventional titles, and reads the rule at the
+  # caller's pin. `scripts/test_conventional_title.py` runs its script
+  # against a local server; this runs the action itself, against GitHub,
+  # from a fixture consumer in the workspace -- the action reads the pin
+  # from the workspace root, as it would in a consumer, so this repository
+  # is checked out beside it.
+  #
+  # No release carries `pattern.txt` yet, so the fixture is pinned to this
+  # run's own commit for every verdict, and to 0.5.0, which predates the
+  # file, for the case of a pin that is too old. Each failing case runs
+  # with `continue-on-error` and is asserted on its outcome afterwards;
+  # what it said is asserted by running the same script directly, since a
+  # job cannot read the log of a step inside an action it called.
+  conventional-title:
+    name: Exercise the conventional-title action
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out this repository beside the fixture
+        uses: actions/checkout@v4
+        with:
+          path: source
+
+      - name: Pin the fixture to this run's commit
+        env:
+          SHA: ${{ github.sha }}
+        run: >-
+          python3 source/scripts/pin_file.py write . "$SHA"
+          workflow commit-messages:conventional
+
+      - name: An accepted title
+        uses: ./source/conventional-title
+        with:
+          title: "feat: add a sign-in limit"
+
+      - name: An accepted squash title
+        uses: ./source/conventional-title
+        with:
+          title: "feat: add x (#41)"
+          pr-suffix: "true"
+
+      - name: An accepted release squash title
+        uses: ./source/conventional-title
+        with:
+          title: "chore(main): release 0.5.2 (#7)"
+          pr-suffix: "true"
+
+      - name: An accepted title holding shell syntax
+        uses: ./source/conventional-title
+        with:
+          title: "feat: add $(touch pwned) `touch pwned-too`"
+
+      - name: A rejected title
+        id: rejected
+        continue-on-error: true
+        uses: ./source/conventional-title
+        with:
+          title: "feat: Add a sign-in limit"
+
+      - name: A squash title without the suffix
+        id: no-suffix
+        continue-on-error: true
+        uses: ./source/conventional-title
+        with:
+          title: "feat: add x"
+          pr-suffix: "true"
+
+      - name: A squash title with two suffixes
+        id: two-suffixes
+        continue-on-error: true
+        uses: ./source/conventional-title
+        with:
+          title: "feat: add x (#41) (#42)"
+          pr-suffix: "true"
+
+      - name: A rejected squash title
+        id: rejected-suffixed
+        continue-on-error: true
+        uses: ./source/conventional-title
+        with:
+          title: "Add x (#41)"
+          pr-suffix: "true"
+
+      - name: A rejected title holding shell syntax
+        id: rejected-shell
+        continue-on-error: true
+        uses: ./source/conventional-title
+        with:
+          title: "Feat: $(touch pwned) `touch pwned-too`; touch pwned-three"
+
+      - name: A title holding a line feed
+        id: line-feed
+        continue-on-error: true
+        uses: ./source/conventional-title
+        with:
+          title: "feat: add x\n::warning::x"
+
+      - name: A title holding a carriage return
+        id: carriage-return
+        continue-on-error: true
+        uses: ./source/conventional-title
+        with:
+          title: "feat: add x\r::warning::x"
+
+      - name: Confirm each verdict
+        env:
+          REJECTED: ${{ steps.rejected.outcome }}
+          NO_SUFFIX: ${{ steps.no-suffix.outcome }}
+          TWO_SUFFIXES: ${{ steps.two-suffixes.outcome }}
+          REJECTED_SUFFIXED: ${{ steps.rejected-suffixed.outcome }}
+          REJECTED_SHELL: ${{ steps.rejected-shell.outcome }}
+          LINE_FEED: ${{ steps.line-feed.outcome }}
+          CARRIAGE_RETURN: ${{ steps.carriage-return.outcome }}
+        run: |
+          set -euo pipefail
+          status=0
+          for case in REJECTED NO_SUFFIX TWO_SUFFIXES REJECTED_SUFFIXED \
+                      REJECTED_SHELL LINE_FEED CARRIAGE_RETURN; do
+            outcome=${!case}
+            echo "$case: $outcome"
+            if [ "$outcome" != failure ]; then
+              echo "::error::the action passed the $case case"
+              status=1
+            fi
+          done
+          for file in pwned pwned-too pwned-three; do
+            if [ -e "$file" ]; then
+              echo "::error::a title was executed: $file exists"
+              status=1
+            fi
+          done
+          exit "$status"
+
+      - name: Confirm what a title with a line break prints
+        env:
+          SCRIPTS: source/scripts
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          status=0
+          for title in $'feat: add x\n::warning::x' $'feat: add x\r::warning::x'; do
+            if CT_TITLE=$title python3 source/conventional-title/check.py \
+                 > "$RUNNER_TEMP/out" 2>&1; then
+              echo "::error::check.py passed a title holding a line break"
+              status=1
+            fi
+            # Split where a log viewer would, and refuse any line that does
+            # not start with the error this script prints.
+            if tr '\r' '\n' < "$RUNNER_TEMP/out" | grep -v '^$' \
+                 | grep -qv '^::error::'; then
+              echo "::error::a line of the output starts with text from the title"
+              status=1
+            fi
+          done
+          exit "$status"
+
+      - name: Remove the pin
+        run: python3 -c 'import os; os.remove(".agent-instructions.toml")'
+
+      - name: A missing pin
+        id: missing-pin
+        continue-on-error: true
+        uses: ./source/conventional-title
+        with:
+          title: "feat: add x"
+
+      - name: Pin the fixture to a release older than pattern.txt
+        run: python3 source/scripts/pin_file.py write . 0.5.0 workflow
+
+      - name: A pin without pattern.txt
+        id: old-pin
+        continue-on-error: true
+        uses: ./source/conventional-title
+        with:
+          title: "feat: add x"
+
+      - name: Confirm both failed, naming the cause
+        env:
+          MISSING_PIN: ${{ steps.missing-pin.outcome }}
+          OLD_PIN: ${{ steps.old-pin.outcome }}
+          SCRIPTS: source/scripts
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [ "$MISSING_PIN" = failure ] \
+            || { echo "::error::the action passed with no pin"; exit 1; }
+          [ "$OLD_PIN" = failure ] \
+            || { echo "::error::the action passed a pin to 0.5.0"; exit 1; }
+          # The pin to 0.5.0 is in place; ask the script what it says.
+          if CT_TITLE="feat: add x" python3 source/conventional-title/check.py \
+               > "$RUNNER_TEMP/out"; then
+            echo "::error::check.py passed a pin to 0.5.0"
+            exit 1
+          fi
+          cat "$RUNNER_TEMP/out"
+          grep -q 'has no conventional-title/pattern.txt' "$RUNNER_TEMP/out"
+          python3 -c 'import os; os.remove(".agent-instructions.toml")'
+          if CT_TITLE="feat: add x" python3 source/conventional-title/check.py \
+               > "$RUNNER_TEMP/out"; then
+            echo "::error::check.py passed with no pin"
+            exit 1
+          fi
+          cat "$RUNNER_TEMP/out"
+          grep -q 'Could not read the pin in .agent-instructions.toml' \
+            "$RUNNER_TEMP/out"
+
   # The one check `main` requires once this repository's required checks
   # are switched over, and the only way to require a matrix job: a job
   # skipped by its own `if:` reports its unexpanded name, which a rule
@@ -427,7 +641,7 @@ jobs:
     name: CI Gate
     runs-on: ubuntu-latest
     permissions: {}
-    needs: [markdown, check, action, change-scope]
+    needs: [markdown, check, action, change-scope, conventional-title]
     if: ${{ always() }}
     steps:
       - name: Assert every job passed or was skipped

@@ -1,0 +1,66 @@
+name: Conventional title
+description: >-
+  Fail unless a title has the Conventional Commits form of the
+  organization's rule, read from aicers/agent-instructions at the release
+  this repository pins.
+
+# Composite action. A repository that has moved to Conventional titles
+# runs it as a step, after checking out its own default branch -- under
+# `pull_request_target`, the base only, never the pull request's head:
+#
+#   on:
+#     pull_request_target:
+#       types: [opened, edited, reopened, synchronize]
+#   permissions:
+#     contents: read
+#   jobs:
+#     title:
+#       runs-on: ubuntu-latest
+#       steps:
+#         - uses: actions/checkout@v5
+#         - uses: aicers/agent-instructions/conventional-title@main
+#           with:
+#             title: ${{ github.event.pull_request.title }}
+#
+# The rule is `pattern.txt` beside this file, and it is read from the
+# release the caller pins in `.agent-instructions.toml`, not from here.
+# `@main`, as with `check-drift` and `change-scope`: the mechanism comes
+# from `main` and the rule from the pin, so a release moves every checker
+# of a repository -- this action, the merge scripts and AgentCoop -- to a
+# new rule at once, and a fix to the mechanism needs no release at all.
+#
+# `check.py` beside this file does the work, and says why each part is
+# the way it is. This file only hands it the inputs, as environment
+# variables: a title is attacker-controlled under `pull_request_target`,
+# and `${{ }}` inside `run:` would paste it into a shell script.
+#
+# No checkout here: the caller has done it, and the pin is read from the
+# workspace root. No `permissions:` either, which an action cannot ask
+# for; reading a public repository's file needs nothing beyond
+# `contents: read`.
+
+inputs:
+  title:
+    description: The title to check.
+    required: true
+  pr-suffix:
+    description: >-
+      "true" when the title must end with " (#<number>)", the suffix a
+      squash merge appends to a commit title on the default branch. The
+      suffix is removed and the rest is checked; a title without it
+      fails.
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - name: Check the title
+      shell: bash
+      env:
+        CT_TITLE: ${{ inputs.title }}
+        CT_PR_SUFFIX: ${{ inputs.pr-suffix }}
+        GH_TOKEN: ${{ github.token }}
+        SCRIPTS: ${{ github.action_path }}/../scripts
+        CHECK: ${{ github.action_path }}/check.py
+      run: python3 "$CHECK"

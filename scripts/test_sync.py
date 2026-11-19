@@ -16,12 +16,18 @@ against the branch the sync actually pushed.
 
 `gh` and the network are replaced by a stub on `PATH` that clones from,
 and reports on, local repositories. Nothing here talks to GitHub.
+
+The title is asserted too, on the pull request and on the commit: a
+repository whose default branch holds one of the marker files gets the
+Conventional one, which `conventional-title/pattern.txt` has to accept,
+and a repository holding none gets the title it always had.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -29,6 +35,14 @@ import tempfile
 from pathlib import Path
 
 SCRIPTS = Path(__file__).resolve().parent
+PATTERN = SCRIPTS.parent / "conventional-title" / "pattern.txt"
+
+# Each consumer, and the marker its default branch holds at the root.
+MARKED = {
+    "plz": "release-plz.toml",
+    "please": "release-please-config.json",
+    "manual": ".manual-release",
+}
 
 RELEASED = """<!-- BEGIN shared:demo -->
 ## Demo
@@ -68,7 +82,7 @@ set -euo pipefail
 case "$1" in
   api)  echo tester ;;
   repo) git clone --quiet "$FAKE_ORIGINS/${3#*/}.git" "$4" ;;
-  pr)   printf '%s\\n' "$*" >> "$FAKE_PR_LOG" ;;
+  pr)   printf '%s\\0' "$@" >> "$FAKE_PR_LOG"; printf '\\036' >> "$FAKE_PR_LOG" ;;
   *)    echo "fake gh: unexpected $*" >&2; exit 1 ;;
 esac
 """
@@ -116,14 +130,16 @@ def upstream(root: Path) -> Path:
         git(root, "add", "-A")
         git(root, "commit", "-qm", message)
 
-    commit(RELEASED, {"consumer": ["demo"]}, "the release")
+    released = {"consumer": ["demo"], "nested": ["demo"], "directory": ["demo"]}
+    released.update({name: ["demo"] for name in MARKED})
+    commit(RELEASED, released, "the release")
     git(root, "tag", "0.1.0")
     # Since the tag: a reworded block and a repository added to the
     # registry. Neither is in 0.1.0, and syncing 0.1.0 must deliver
     # neither.
     commit(
         UNRELEASED,
-        {"consumer": ["demo"], "newcomer": ["demo"]},
+        {**released, "newcomer": ["demo"]},
         "after the release",
     )
     # sync.sh resolves the tag against `origin`; here that is this
@@ -133,11 +149,14 @@ def upstream(root: Path) -> Path:
     return root
 
 
-def consumer(origins: Path, work: Path) -> Path:
+def consumer(origins: Path, work: Path, marker: str | None = None) -> Path:
     """A bare repository standing in for a consumer on GitHub."""
     work.mkdir(parents=True)
     (work / "AGENTS.md").write_text(AGENTS, encoding="utf-8")
     (work / ".agent-instructions.toml").write_text(PIN, encoding="utf-8")
+    if marker:
+        (work / marker).parent.mkdir(parents=True, exist_ok=True)
+        (work / marker).write_text("", encoding="utf-8")
     git(work, "init", "-q", ".")
     git(work, "add", "-A")
     git(work, "commit", "-qm", "onboard")
@@ -151,6 +170,16 @@ def consumer(origins: Path, work: Path) -> Path:
     return bare
 
 
+def pull_requests(log: Path) -> list[list[str]]:
+    """Each `gh pr` call the stub logged, as its argument list."""
+    records = log.read_text(encoding="utf-8").split("\036")
+    return [record.split("\0")[:-1] for record in records if record]
+
+
+def argument(call: list[str], flag: str) -> str:
+    return call[call.index(flag) + 1] if flag in call else ""
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)
@@ -158,6 +187,18 @@ def main() -> int:
         origins = tmp / "origins"
         origins.mkdir()
         bare = consumer(origins, tmp / "consumer")
+        bares = {
+            name: consumer(origins, tmp / name, marker)
+            for name, marker in MARKED.items()
+        }
+        # A marker below the root is not a converted repository, and nor
+        # is a directory at the root that shares a marker's name.
+        bares["nested"] = consumer(
+            origins, tmp / "nested", "crates/x/release-plz.toml"
+        )
+        bares["directory"] = consumer(
+            origins, tmp / "directory", ".manual-release/README.md"
+        )
         root = upstream(tmp / "upstream")
 
         binary = tmp / "bin"
@@ -205,9 +246,54 @@ def main() -> int:
         )
         check('ref = "0.1.0"' in pin, "the pin names the tag")
         check("- local content" in pushed, "content outside the markers stays")
-        check(log.read_text(encoding="utf-8").count("pr create") == 1,
+        requests = pull_requests(log)
+        check(len(requests) == 1 and requests[0][:2] == ["pr", "create"],
               "one pull request is opened, with the blocks in its body")
-        check("demo" in log.read_text(encoding="utf-8"), "which it names")
+        check(bool(requests) and "demo" in argument(requests[0], "--body"),
+              "which it names")
+        traditional = "Update shared instruction blocks to 0.1.0"
+        check(
+            bool(requests) and argument(requests[0], "--title") == traditional,
+            "a repository with no marker file keeps the title it had",
+        )
+        check(
+            git(bare, "log", "-1", "--format=%s", branch).strip() == traditional,
+            "and so does the commit",
+        )
+
+        rule = re.compile(PATTERN.read_text(encoding="utf-8")[:-1])
+        conventional = "chore: update shared instruction blocks to 0.1.0"
+        unconverted = {
+            "nested": "a marker file below the root",
+            "directory": "a directory named like a marker at the root",
+        }
+        for name in (*MARKED, *unconverted):
+            want = traditional if name in unconverted else conventional
+            where = unconverted.get(name) or MARKED[name]
+            print(f"syncing a repository holding {where}")
+            log.write_text("", encoding="utf-8")
+            result = sync("0.1.0", name)
+            check(result.returncode == 0, "exits 0")
+            requests = pull_requests(log)
+            check(
+                len(requests) == 1 and argument(requests[0], "--title") == want,
+                f"titles the pull request {want!r}",
+            )
+            subject = git(bares[name], "log", "-1", "--format=%s", branch).strip()
+            check(subject == want, "and the commit subject the same")
+            body = git(bares[name], "log", "-1", "--format=%b", branch)
+            check(
+                body.startswith("Synced from aicers/agent-instructions at 0.1.0"),
+                "with the commit body unchanged",
+            )
+            if want == conventional:
+                check(rule.search(want) is not None, "which pattern.txt accepts")
+
+        print("a dry run")
+        result = sync("--dry-run", "0.1.0", "plz")
+        check(result.returncode == 0, "exits 0")
+        check(f"title: {conventional}" in result.stdout,
+              "says what the pull request would be titled")
 
         # The roster is the release's too. A repository added to
         # repos.json after the tag is not a consumer of that tag, and
