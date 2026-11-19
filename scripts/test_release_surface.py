@@ -39,11 +39,25 @@ def git(root: Path, *args: str) -> None:
 
 
 def release(
-    root: Path, tag: str, *, blocks: str, notes: str, roster: str = "{}\n"
+    root: Path,
+    tag: str,
+    *,
+    blocks: str,
+    notes: str,
+    roster: str = "{}\n",
+    rule: str = "^feat: [a-z]+$\n",
 ) -> None:
     (root / "blocks" / "demo.md").write_text(blocks, encoding="utf-8")
     (root / "README.md").write_text(notes, encoding="utf-8")
     (root / "repos.json").write_text(roster, encoding="utf-8")
+    (root / "conventional-title").mkdir(exist_ok=True)
+    (root / "conventional-title" / "pattern.txt").write_text(
+        rule, encoding="utf-8"
+    )
+    # Mechanism beside the rule, which moving must not count as a release.
+    (root / "conventional-title" / "check.py").write_text(
+        notes, encoding="utf-8"
+    )
     git(root, "add", "-A")
     git(
         root,
@@ -105,7 +119,8 @@ def main() -> int:
         result = run(root, "1.0.1")
         check(result.returncode == 0, "exits 0")
         check(
-            "comparing blocks/ and repos.json: 1.0.0 -> 1.0.1"
+            "comparing blocks/, repos.json and conventional-title/pattern.txt:"
+            " 1.0.0 -> 1.0.1"
             in result.stdout,
             "compares against the previous tag in version order",
         )
@@ -125,7 +140,8 @@ def main() -> int:
         result = run(root, "1.2.0")
         check(result.returncode == 0, "exits 0")
         check(
-            "comparing blocks/ and repos.json: 1.1.1 -> 1.2.0"
+            "comparing blocks/, repos.json and conventional-title/pattern.txt:"
+            " 1.1.1 -> 1.2.0"
             in result.stdout,
             "compares both paths",
         )
@@ -137,7 +153,7 @@ def main() -> int:
             "names repos.json as what moved, not blocks/",
         )
 
-        print("a release that changes neither path")
+        print("a release that changes none of the three paths")
         release(
             root,
             "1.2.1",
@@ -148,9 +164,29 @@ def main() -> int:
         result = run(root, "1.2.1")
         check(result.returncode != 0, "exits non-zero")
         check(
-            "blocks/ and repos.json are both byte-identical"
+            "blocks/, repos.json and conventional-title/pattern.txt are all"
             in result.stderr,
-            "says both paths are unchanged",
+            "says all three paths are unchanged",
+        )
+
+        # Every checker of a title reads `pattern.txt` at the release a
+        # repository pins, so changing the rule reaches a consumer only
+        # through a release -- one with nothing in blocks/ or repos.json.
+        print("a release that changes only conventional-title/pattern.txt")
+        release(
+            root,
+            "1.3.0",
+            blocks="a changed rule\n",
+            notes="fifth\n",
+            roster='{"repos": {"one": ["demo"]}}\n',
+            rule="^(feat|fix): [a-z]+$\n",
+        )
+        result = run(root, "1.3.0")
+        check(result.returncode == 0, "exits 0")
+        last = result.stdout.rsplit("\n", 2)[-2]
+        check(
+            last == "conventional-title/pattern.txt differs; proceeding",
+            "names pattern.txt as what moved, and nothing else",
         )
 
         # The guard resolves the previous release out of the tag list, so a

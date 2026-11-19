@@ -56,13 +56,38 @@ name: Apply shared instruction blocks
 # No permissions block here. A called workflow can only narrow what the
 # caller granted, so restating them would add a way for this file to
 # conflict with a correct caller and nothing else.
+#
+# The runner follows the caller's visibility. A private repository of the
+# organization runs its workflows on the self-hosted machines, because
+# GitHub bills hosted minutes for private repositories; a public one cannot
+# use those machines at all and is free on hosted ones. The caller passes
+# nothing for it -- every consumer's `update-instructions.yml` stays as it
+# is -- because `github.event.repository` is the caller's under both
+# `schedule` and `workflow_dispatch`, and says which it is.
+#
+# So the steps below use nothing but git, python3, curl and tar, which is
+# what the self-hosted machines are known to carry, and the actions they
+# call. No `gh`: the GitHub API calls are `scripts/apply_github.py`, with
+# the caller's GITHUB_TOKEN taken from the environment and never put on a
+# command line, where another process on a shared machine could read it.
+#
+# The title. A repository whose default branch holds `release-plz.toml`,
+# `release-please-config.json` or `.manual-release` at its root has moved
+# to Conventional Commits titles, which its checks hold every title on
+# that branch to; its pull request, and the commit on it, are titled
+# `chore: update shared instruction blocks to <tag>`. Any other keeps
+# `Update shared instruction blocks to <tag>`. `scripts/apply_title.py`
+# decides, for `scripts/sync.sh` as well, so the two cannot disagree.
 
 on:
   workflow_call:
 
 jobs:
   apply:
-    runs-on: ubuntu-latest
+    # `fromJSON` for the label list, since an expression has no array
+    # literal. A missing `private` -- an event payload without the
+    # repository -- reads as public, which runs and only costs minutes.
+    runs-on: ${{ github.event.repository.private && fromJSON('["self-hosted", "linux"]') || 'ubuntu-latest' }}
     steps:
       - name: Check out the calling repository
         uses: actions/checkout@v4
@@ -85,11 +110,11 @@ jobs:
       - name: Resolve the latest release
         id: release
         env:
-          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          tag=$(gh release view --repo aicers/agent-instructions \
-                  --json tagName --jq .tagName)
+          tag=$(python3 .agent-instructions/scripts/apply_github.py \
+                  latest-release)
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "latest release is $tag"
 
@@ -102,6 +127,28 @@ jobs:
           repository: aicers/agent-instructions
           ref: ${{ steps.release.outputs.tag }}
           path: .agent-instructions-blocks
+
+      # Judged on the default branch, which is what the pull request is
+      # opened against and what has merged the marker, rather than on the
+      # checkout: a dispatched run may stand on any branch. Fetched into a
+      # ref of its own because the step below reuses FETCH_HEAD.
+      - name: Title the pull request
+        id: title
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          default=$(python3 .agent-instructions/scripts/apply_github.py \
+                      default-branch "$REPOSITORY")
+          git fetch -q --depth=1 origin \
+            "+refs/heads/$default:refs/remotes/origin/$default"
+          title=$(python3 .agent-instructions/scripts/apply_title.py \
+                    . "refs/remotes/origin/$default" "$TAG")
+          echo "default=$default" >> "$GITHUB_OUTPUT"
+          echo "title=$title" >> "$GITHUB_OUTPUT"
+          echo "titled for $default: $title"
 
       # Branch first, then apply on top of whatever the branch already
       # carries. Applying to the default branch instead and force-pushing
@@ -119,11 +166,13 @@ jobs:
           echo "name=$branch" >> "$GITHUB_OUTPUT"
           # What the branch is measured against, recorded before leaving it.
           echo "base=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          # `-C` rather than `-c`: a self-hosted runner keeps its workspace,
+          # and with it the branch a previous run of this release made.
           if git fetch --depth=1 origin "$branch" 2>/dev/null; then
             echo "$branch exists; updating it"
-            git switch -c "$branch" FETCH_HEAD
+            git switch -C "$branch" FETCH_HEAD
           else
-            git switch -c "$branch"
+            git switch -C "$branch"
           fi
 
       - name: Apply the released blocks
@@ -148,13 +197,27 @@ jobs:
 
       # Both checkouts sit inside the caller's working tree, and the commit
       # below stages every change in it. Removing them is what keeps that
-      # safe: the tree then holds nothing this job did not write.
+      # safe: the tree then holds nothing this job did not write. The API
+      # script is kept, under `$RUNNER_TEMP`, for the last step. Python
+      # rather than `rm` and `cp`, so that every tool here is one the
+      # self-hosted machines are known to carry.
       - name: Remove the checkouts
-        run: rm -rf .agent-instructions .agent-instructions-blocks
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, shutil
+          kept = os.path.join(os.environ["RUNNER_TEMP"], "agent-instructions-apply")
+          shutil.rmtree(kept, ignore_errors=True)
+          os.makedirs(kept)
+          shutil.copy2(".agent-instructions/scripts/apply_github.py", kept)
+          shutil.rmtree(".agent-instructions")
+          shutil.rmtree(".agent-instructions-blocks")
+          PY
 
       - name: Commit and push the branch
         env:
           TAG: ${{ steps.release.outputs.tag }}
+          TITLE: ${{ steps.title.outputs.title }}
           BRANCH: ${{ steps.branch.outputs.name }}
         run: |
           set -euo pipefail
@@ -170,9 +233,10 @@ jobs:
 
           # The message is built with printf rather than as a multi-line
           # shell string, so the indentation that makes this file readable
-          # does not end up inside the commit. It wraps at 72.
+          # does not end up inside the commit. It wraps at 72. The subject is
+          # the pull request's title, whichever form that takes.
           printf '%s\n' \
-            "Update shared instruction blocks to $TAG" \
+            "$TITLE" \
             "" \
             "Applied from aicers/agent-instructions at $TAG, which this" \
             "repository's drift check is now pinned to. Do not edit the" \
@@ -198,28 +262,19 @@ jobs:
       # anything, not only when this run is the one that wrote it.
       - name: Open the pull request
         env:
-          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
           BLOCKS: ${{ steps.applied.outputs.blocks }}
           BRANCH: ${{ steps.branch.outputs.name }}
           BASE: ${{ steps.branch.outputs.base }}
+          DEFAULT: ${{ steps.title.outputs.default }}
           TAG: ${{ steps.release.outputs.tag }}
+          TITLE: ${{ steps.title.outputs.title }}
         run: |
           set -euo pipefail
 
           if git diff --quiet "$BASE" HEAD; then
             echo "already on $TAG; no pull request to open"
-            exit 0
-          fi
-
-          # Any state, not just open. An open one is already up to date --
-          # the push above did that. A closed one was somebody declining
-          # this release, and reopening it every Monday is not a review
-          # comment. A merged one means the work landed.
-          existing=$(gh pr list --head "$BRANCH" --state all \
-                       --json number,state \
-                       --jq '.[0] | select(.) | "#\(.number) (\(.state))"')
-          if [ -n "$existing" ]; then
-            echo "$BRANCH already has pull request $existing"
             exit 0
           fi
 
@@ -234,6 +289,11 @@ jobs:
             "" \
             "The marked blocks are generated. Change the wording upstream in \`aicers/agent-instructions\` rather than editing it here — the drift check in CI will fail if this repository's copy diverges." \
             > "$RUNNER_TEMP/pull-request-body.md"
-          gh pr create --head "$BRANCH" \
-            --title "Update shared instruction blocks to $TAG" \
-            --body-file "$RUNNER_TEMP/pull-request-body.md"
+
+          # One pull request for the branch in any state means no new one:
+          # `apply_github.py` looks before it opens, and says why it did
+          # not. Into the default branch, which is where `gh pr create`
+          # used to open it.
+          python3 "$RUNNER_TEMP/agent-instructions-apply/apply_github.py" \
+            open-pull-request "$REPOSITORY" "$BRANCH" "$DEFAULT" "$TITLE" \
+            "$RUNNER_TEMP/pull-request-body.md"

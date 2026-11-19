@@ -35,6 +35,16 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   for one whose pull requests leave `CHANGELOG.md` alone and describe
   their change in a `## Changelog` section of the pull request body
   instead, for the release to collect.
+- `conventional-title`, a composite action that checks a title against
+  the organization's Conventional Commits title rule, and
+  `conventional-title/pattern.txt`, the rule itself as one regular
+  expression that Python, JavaScript and `grep -E` read alike. A
+  repository calls `aicers/agent-instructions/conventional-title@main`
+  with the title to check, and with `pr-suffix: "true"` for a squash
+  commit title ending in its pull-request number. The action reads the
+  rule from the release the repository pins in `.agent-instructions.toml`,
+  and fails, saying why, when there is no pin or the pinned release has
+  no `pattern.txt`.
 
 ### Changed
 
@@ -47,6 +57,16 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   nearest block before it in the repository's list, or before the first
   shared region when there is none. A file with no shared region at all
   is still refused.
+- A repository whose default branch holds `release-plz.toml`,
+  `release-please-config.json` or `.manual-release` at its root now gets
+  its shared-instruction pull requests, and the commits on them, titled
+  `chore: update shared instruction blocks to <release>`, which its
+  Conventional title checks accept. Every other repository keeps the
+  title it had. This applies to the pull requests the scheduled
+  `apply.yml` job opens and to those `scripts/sync.sh` opens.
+- `apply.yml` runs on a self-hosted Linux runner for a private calling
+  repository, and still on a GitHub-hosted one for a public caller. The
+  calling workflow needs no change.
 
 ## [0.5.0] - 2026-11-10
 

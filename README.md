@@ -39,10 +39,16 @@ check-drift/    the drift check as a composite action, for a consumer
                 that would rather run it as a step than as a job
 change-scope/   decide whether a run's change is documentation only, as a
                 composite action for a consumer's change-filter job
+conventional-title/
+  pattern.txt     the Conventional title rule, as one regular expression
+  action.yml      check one title against that rule, as a composite action
+  check.py        what the action runs
 scripts/
   render.py       apply, verify, list, or retire a block in one file
   pin_file.py     read or write a consumer's .agent-instructions.toml
   apply_blocks.py bring one repository up to a release: apply, retire, pin
+  apply_title.py  title an apply pull request, by the target's marker files
+  apply_github.py the GitHub API calls apply.yml makes, without gh
   sync.sh         fan out apply_blocks.py to every repository at once
   lint_blocks.py  enforce the authoring rules in STYLE.md
   check_drift.py  warn when a consumer's pin is behind the latest release
@@ -200,9 +206,13 @@ cannot look it up. See [STYLE.md](STYLE.md).
    ```
 
    `release.yml` turns the tag into a GitHub Release with those notes. It
-   first refuses a tag whose `blocks/` tree is byte-identical to the
-   previous release's, since that release would give every consumer a
-   pull request that moves a pin and changes no rule.
+   first refuses a tag that leaves `blocks/`, `repos.json` and
+   `conventional-title/pattern.txt` all byte-identical to the previous
+   release's, since that release would give every consumer a pull
+   request that moves a pin and changes no rule, no repository's list of
+   blocks and no title rule. A release that changes only one of the
+   three is accepted: each of them reaches a consumer through its pin,
+   and only through a release.
 5. Check what each consumer is carrying. The roster comes from
    `repos.json`, so nothing here needs editing when a repository is
    added:
@@ -292,10 +302,37 @@ No inputs and no secrets. The workflow resolves the latest release, reads
 `repos.json` out of it to find which blocks this repository should carry,
 rewrites the marked regions, drops any block that list no longer names,
 writes the release and the list into `.agent-instructions.toml`, and
-opens one pull request on `shared-instructions/<release>`. A repository
-already on the latest release gets none, and a second run against an
-unchanged repository neither opens a pull request nor rewrites the branch
-behind an open one.
+opens one pull request on `shared-instructions/<release>` into the
+default branch. A repository already on the latest release gets none, a
+branch that already has a pull request in any state — open, closed or
+merged — gets no second one, and a second run against an unchanged
+repository neither opens a pull request nor rewrites the branch behind
+an open one.
+
+The pull request, and the commit on it, are titled
+`chore: update shared instruction blocks to <release>` when the root of
+the caller's default branch holds `release-plz.toml`,
+`release-please-config.json` or `.manual-release` — the marker files of
+a repository that has moved to Conventional titles, where every title on
+that branch is checked against [the title rule](#checking-titles) and
+the old title would fail. Only a file counts: a directory of one of
+those names does not. Every other repository keeps
+`Update shared instruction blocks to <release>`. The default branch
+decides, not the branch a dispatched run was started on, and
+`scripts/apply_title.py` decides it for `scripts/sync.sh` too.
+
+The job runs on `[self-hosted, linux]` when the caller is private and on
+`ubuntu-latest` when it is public, read from `github.event.repository`,
+which is the caller's under `schedule` and `workflow_dispatch` alike, so
+the caller passes nothing for it. Private repositories here run on the
+organization's self-hosted machines to avoid billed minutes; public ones
+cannot use those machines. So the job uses only what they are known to
+carry — `git`, `python3`, `curl` and `tar` — and no `gh`: its GitHub API
+calls are `scripts/apply_github.py`, which sends the caller's
+`GITHUB_TOKEN` from its own process rather than on a command line that
+another process on a shared machine could read. A failed call fails the
+job. `scripts/test_apply_workflow.py` runs the workflow's steps against
+local consumers, with nothing but those four tools on the `PATH`.
 
 Reading the list from `repos.json` rather than from the caller is what
 lets a release deliver a *new* block to a repository. Name it there and
@@ -438,7 +475,12 @@ against it — the same script `apply.yml` runs, which is why the two
 cannot disagree — and opens one pull request per repository under
 `<github-username>/instructions-0.2.0`. Repositories already current are
 skipped, and a tag that is not on `origin` is refused before anything is
-touched.
+touched. Each pull request is titled as `apply.yml` titles it, through
+the same `scripts/apply_title.py`, judged on the default branch the
+clone stands on: `chore: update shared instruction blocks to 0.2.0` for
+a repository holding a marker file, and
+`Update shared instruction blocks to 0.2.0` for any other. It runs on
+your workstation, so it still uses `gh`.
 
 What gets applied is the tag's own tree, fetched from `origin`: its
 `blocks/` and its `repos.json`, not the ones in your working checkout.
@@ -719,6 +761,137 @@ comes from the caller's inputs. It runs under whichever `bash` is first
 on the runner's `PATH`, on hosted runners and on the self-hosted Linux
 and macOS ones, and it is written for bash 3.2, the oldest of those: CI
 runs its tests under macOS `/bin/bash`, which is 3.2 with BSD tools.
+
+## Checking titles
+
+A repository that has moved to Conventional Commits titles holds
+`release-plz.toml`, `release-please-config.json` or `.manual-release` at
+the root of its default branch, and every title that reaches that branch
+is checked against one rule: a pull request's title, a release pull
+request's title, and each commit title on `main`. The rule is
+`conventional-title/pattern.txt`, written once, here. Every checker
+reads it from the release the checked repository pins in
+`.agent-instructions.toml` — this repository's `conventional-title`
+action, the drive-agentcoop merge scripts, and AgentCoop — so a release
+moves them all to a new rule together, and a repository takes it the way
+it takes a changed block.
+
+### The rule
+
+A title is accepted when it has the form
+`<type>[(<scope>)][!]: <description>`, where:
+
+- `<type>` is one of `feat`, `fix`, `docs`, `style`, `refactor`, `perf`,
+  `test`, `build`, `ci`, `chore` or `revert`;
+- `<scope>`, when present, is non-empty, made of lowercase ASCII
+  letters, digits, `.`, `_` and `-`, and starts with a letter or digit;
+- `!` marks a breaking change, and sits right before the colon, after
+  the scope if there is one;
+- the colon is followed by exactly one space;
+- `<description>` starts with a lowercase ASCII letter, does not end
+  with `.`, a space or a tab, and holds no `#` followed by a digit — no
+  issue or pull-request number, and so no `(#N)` suffix.
+
+Three more conditions belong to the rule and are not in the expression,
+because no expression can check them: the description is English, it is
+in the imperative mood (`add`, not `added` or `adds`), and a breaking
+change carries `!` in the title. A `BREAKING CHANGE:` footer alone is
+not enough, since the merge checks and review see only the title.
+`pattern.txt` checks the form; review judges those three.
+
+Accepted: `feat: add a sign-in limit`, `fix(security): reject empty
+tokens`, `feat(api)!: rename the field`, `chore(main): release 0.5.2`,
+`revert: feat: add a sign-in limit`. Rejected: `Add a sign-in limit`,
+`feat: Add a sign-in limit`, `feat: add a sign-in limit.`,
+`feat: add a sign-in limit (#12)`, `feat(API): add x`,
+`feat!(api): add x`.
+
+### The file
+
+`pattern.txt` is exactly one line, the expression, followed by one
+newline, with no comments. Read it, drop that newline, and use the rest
+as it is. The expression is anchored with `^` and `$`, and is written in
+the dialect Python `re`, JavaScript `RegExp` without flags and POSIX ERE
+(`grep -E`) share: ASCII bracket expressions, groups, alternation and the
+`?`, `*` and `+` quantifiers, with `\(` and `\)` as its only escapes. No
+`\d`, `\w`, `\s` or `\t`, no lookaround, lazy quantifiers or
+non-capturing groups, and no POSIX character classes. The two tabs it
+excludes from a description's last character are literal tab
+characters, since ERE has no escape for one. Under `grep -E`, set
+`LC_ALL=C`, so that `[a-z]` means the ASCII letters.
+
+Every reader rejects a title holding a carriage return or a line feed
+before matching it, and so must any new one. `grep -E` matches line by
+line, Python's `$` matches before a trailing newline, and `[^#]` matches
+a line break under Python and JavaScript, so the three engines do not
+agree on such a title; and a checker that prints one would start a new
+log line holding text from the title, which a runner reads as a workflow
+command.
+
+`scripts/test_conventional_title.py` puts a table of accepted and
+rejected titles through all three engines and fails on any verdict that
+differs from the table or from the other two.
+
+### The action
+
+`conventional-title/` checks one string against the rule, as a step:
+
+```yaml
+name: PR title
+on:
+  pull_request_target:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  title:
+    runs-on: ubuntu-latest
+    steps:
+      # The base only: under pull_request_target the head is untrusted,
+      # and the pin that decides the rule is the base's.
+      - uses: actions/checkout@v5
+      - uses: aicers/agent-instructions/conventional-title@main
+        with:
+          title: ${{ github.event.pull_request.title }}
+```
+
+The inputs:
+
+- `title` (required) is the string to check.
+- `pr-suffix`, `"false"` by default. With `"true"` the string must end
+  with a space and `(#<digits>)`, the suffix a squash merge appends to a
+  commit title on the default branch; the suffix is removed and the rest
+  is checked, and a string without it fails. `feat: add x (#41)` passes;
+  `feat: add x`, `feat: add x (#41) (#42)` and `Add x (#41)` fail.
+
+It reads the pin at the root of the workspace with `scripts/pin_file.py`,
+fetches `conventional-title/pattern.txt` from this repository at the
+pinned `ref`, and checks the title. On a match it passes and prints the
+title. On a mismatch it fails with an `::error::` that quotes the title
+and states the expected form. It also fails, saying why, when
+`.agent-instructions.toml` is missing or cannot be read, when the pinned
+release has no `pattern.txt` — a pin to a release older than this action
+— and when the file cannot be fetched or is not in the one-line format.
+
+The caller checks out its repository, and the action performs no
+checkout of its own. Under `pull_request_target` that checkout must be
+the base, which is what `actions/checkout` does by default there. The
+title reaches the action's shell only as an environment variable, never
+through `${{ }}` inside `run:`, because under `pull_request_target` a
+pull request's author chooses it; it is checked as plain text, and it is
+only ever printed quoted, with `%` escaped and every unprintable
+character written as an escape, so nothing in it can start a log line or
+a workflow command. A caller token with `contents: read` is enough, and
+the rule is fetched with `curl`, the token given to it on standard
+input.
+
+`@main`, like `check-drift` and `change-scope`: the mechanism comes from
+`main` and the rule from the pin, so the action keeps working for every
+release that carries `pattern.txt`. CI runs the action itself against a
+fixture consumer, pinned to the run's own commit for its verdicts and to
+`0.5.0`, which predates the file, for a pin that is too old.
 
 ## Onboarding a repository
 
