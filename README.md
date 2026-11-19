@@ -32,8 +32,9 @@ better commit-message rules that the rest never received.
 ## Layout
 
 ```text
-blocks/         the shared regions, one file per block
-repos.json      which repository consumes which blocks
+blocks/         the shared regions: <block>.md for each block, and
+                <block>.<variant>.md for each other text of one
+repos.json      which repository consumes which blocks, and which variant
 check-drift/    the drift check as a composite action, for a consumer
                 that would rather run it as a step than as a job
 change-scope/   decide whether a run's change is documentation only, as a
@@ -50,6 +51,7 @@ scripts/
   consumer_fixture.sh  build a throwaway consumer, for CI to check against
   check_release_surface.sh  refuse a release with nothing in it
   test_*.py       tests for the scripts above, run in CI
+  fixtures/       a real consumer's AGENTS.md, for those tests to apply to
 STYLE.md        how to write a block
 CHANGELOG.md    what each release changed; also its release notes
 ```
@@ -122,6 +124,19 @@ so `pin_file.py` reads that one path and nothing else. A checkout
 restored from a branch older than the move fails naming the file to
 create, rather than being read from a path no driver writes.
 
+A name in either list is `<block>`, or `<block>:<variant>` for a block
+that has more than one text — `commit-messages:conventional`, say. Each
+half is letters, digits, `-` and `_`; a name spelled with a `.`, such as
+`changelog.generated`, is malformed everywhere a name is read, rather
+than taken for a block of its own. The region in `AGENTS.md` is always
+`shared:<block>`, whichever text it holds. The text comes from
+`blocks/<block>.<variant>.md` when a variant is named and from
+`blocks/<block>.md` when none is, so a repository whose rules differ from
+the rest — one that writes Conventional Commits titles, say — takes a
+different file into the same region rather than a block of its own.
+Switching variants rewrites what is between the markers and leaves the
+markers where they are.
+
 Inside `AGENTS.md`, the shared regions are delimited by markers and
 everything outside them belongs to the repository:
 
@@ -166,7 +181,12 @@ cannot look it up. See [STYLE.md](STYLE.md).
 
 ## Changing a block
 
-1. Edit the file in `blocks/`.
+1. Edit the file in `blocks/`. A variant, `blocks/<block>.<variant>.md`,
+   is edited the same way, and only the repositories that list
+   `<block>:<variant>` receive it. Adding a variant is adding that file;
+   switching a repository to it, or back to the default, is changing its
+   name in `repos.json`. A variant keeps its block's `##` heading and the
+   block's own markers, `shared:<block>` — see [STYLE.md](STYLE.md).
 2. Add a `CHANGELOG.md` entry under the version you are about to cut.
    The entry *is* the release notes, and `release.yml` refuses to
    release a tag that has none.
@@ -279,10 +299,17 @@ behind an open one.
 
 Reading the list from `repos.json` rather than from the caller is what
 lets a release deliver a *new* block to a repository. Name it there and
-the next apply carries it in — provided the repository's `AGENTS.md`
-already has the marker pair, since nothing upstream can decide where in
-that file a block belongs. Without the pair the job fails naming it, and
-writes nothing.
+the next apply carries it in. A region the repository does not have yet
+is inserted with its markers, right after the END marker of the nearest
+block before it in the list that the file already carries, and set off by
+a blank line the way the others are; so `commit-messages`, listed after
+`workflow`, lands right after the workflow region. Blocks are applied in
+list order, so a block inserted a moment ago counts as the one before the
+next. A retired block does not count, since its region is about to be
+removed. With no block before it in the file, the region goes right
+before the first shared region. A file with no shared region at all is
+refused, as before: where generated text starts in a file nothing has
+generated into is for whoever onboards it to decide.
 
 Nothing the job writes is under `.github/workflows/`, which is what makes
 the default token enough. GitHub rejects a push touching that directory
@@ -448,11 +475,24 @@ pin file stops naming it, which is what stops its drift check looking for
 a file the release does not have. Nothing is left in the consumer for
 anyone to tidy.
 
+A block with variants is retired the same way, all of it at once: every
+name in `repos.json` that starts `<block>`, with or without a variant,
+and `blocks/<block>.md` with every `blocks/<block>.<variant>.md` beside
+it. A region is removed when no listed name has its block as the part
+before the `:`, never because the name that lists it carries a variant.
+
 `apply_blocks.py` also treats a block `repos.json` lists but `blocks/`
 does not carry as retired rather than as an error, which covers a release
 whose two halves disagree. A release carrying *none* of them is refused
 instead: that is a checkout pointing somewhere unintended, and applying it
 would strip every region the repository has.
+
+A variant is not a block, and a missing one is not a retirement. When a
+release carries `blocks/<block>.md` but not the
+`blocks/<block>.<variant>.md` a repository lists, the apply fails and
+writes nothing: the block is still there, and retiring it would strip a
+region the repository should still have. Only when the block file is gone
+too is the name retired as above.
 
 The drift check compares the other direction too, and fails on a marker
 the repository no longer lists — so a retirement that never reached a
@@ -497,6 +537,15 @@ blocks to compare both come from the repository's
 from this repository at that release — whether because someone edited a
 generated region locally, or because an update pull request was never
 merged.
+
+Each listed name is compared against the one file it is read from:
+`blocks/<block>.<variant>.md` for a name with a variant, `blocks/<block>.md`
+for one without. It stays a byte comparison of one region against one
+file, so a region holding the default text where the pin lists a variant
+fails just as an edited one does. The other direction compares regions
+against the part of each name before the `:`, so a region listed with a
+variant is listed. A pin from before variants existed names no variant,
+and is read exactly as it always was.
 
 A caller with nothing to pass is a caller nothing upstream ever has to
 rewrite, which is what keeps the apply out of `.github/workflows/`. It
@@ -676,9 +725,13 @@ runs its tests under macOS `/bin/bash`, which is 3.2 with BSD tools.
 1. Add it to `repos.json` with the blocks it should consume.
 2. Restructure its `AGENTS.md`: convert bullets to `-`, drop section
    numbering, and insert the marker pairs where each block belongs.
-   Write its `## Language` section outside the markers, as [the
-   consumer contract](#the-consumer-contract) describes.
-3. Create its `.agent-instructions.toml`:
+   One pair is enough to start from: the apply inserts each missing one
+   after the block the list puts before it, so only a file with no shared
+   region at all has to be given one by hand. Write its `## Language`
+   section outside the markers, as [the consumer
+   contract](#the-consumer-contract) describes.
+3. Create its `.agent-instructions.toml`, naming any variant the way
+   `repos.json` does, as `<block>:<variant>`:
 
    ```toml
    ref = "0.1.0"

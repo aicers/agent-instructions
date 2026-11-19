@@ -5,9 +5,10 @@
     blocks = ["workflow", "rust"]
 
 `ref` is the release of aicers/agent-instructions the repository carries;
-`blocks` are the shared blocks it has. The drift check reads both — the
-ref decides what the comparison runs against, the list decides what is
-compared at all — and the apply rewrites both.
+`blocks` are the shared blocks it has, each as `<block>` or
+`<block>:<variant>` -- `commit-messages:conventional`, say. The drift
+check reads both — the ref decides what the comparison runs against, the
+list decides what is compared at all — and the apply rewrites both.
 
 The file exists so that neither value lives in `.github/workflows/`.
 GitHub refuses a push touching that directory when it is authenticated
@@ -49,7 +50,14 @@ import sys
 from pathlib import Path
 
 RELATIVE = Path(".agent-instructions.toml")
-NAME = re.compile(r"[\w.-]+")
+# A release tag. Its shape is unchanged from when it shared a pattern with
+# block names, so every tag that was ever pinned still reads.
+TAG = re.compile(r"[\w.-]+")
+# A block name, `<block>` or `<block>:<variant>`. Neither half may hold a
+# `.`: a block file's stem is `<block>.<variant>`, so a name written with
+# the dot -- `changelog.generated` -- would otherwise resolve as a block of
+# its own that no release has, and be retired rather than refused.
+NAME = re.compile(r"[\w-]+(?::[\w-]+)?")
 
 HEADER = """\
 # What this repository carries from aicers/agent-instructions: the release
@@ -88,7 +96,7 @@ def dump(ref: str, blocks: list[str]) -> str:
     # write was asked for. Caught here it says so; caught by the reader a
     # step later it names the consumer's file, which was just rewritten and
     # is the one thing not at fault.
-    if not NAME.fullmatch(ref):
+    if not TAG.fullmatch(ref):
         raise PinError(f"{ref!r} is not a usable release tag")
     for block in blocks:
         if not NAME.fullmatch(block):
@@ -152,7 +160,7 @@ def load(root: Path) -> tuple[str, list[str]]:
     # hand-written file fails here naming the value rather than somewhere
     # downstream naming nothing.
     tag = ref.group("value").strip()
-    if not NAME.fullmatch(tag):
+    if not TAG.fullmatch(tag):
         raise PinError(
             f"{path}: {tag!r} is not a usable release tag"
             " -- an unclosed quote reads as one of these"

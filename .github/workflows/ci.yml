@@ -75,20 +75,42 @@ jobs:
       - name: Verify block markers and authoring rules
         run: python3 scripts/lint_blocks.py
 
+      - name: Test the steps written in workflow YAML
+        run: python3 scripts/test_workflow_steps.py
+
+      # A listed name is `<block>` or `<block>:<variant>`, read from
+      # `blocks/<block>.md` or `blocks/<block>.<variant>.md`. A variant
+      # file belongs to its block: it is never a block of its own that no
+      # repository consumes, and a name written with the file's `.`
+      # instead of the `:` is malformed rather than looked up.
+      # `scripts/test_workflow_steps.py` runs this script against rosters
+      # of its own.
       - name: Verify repos.json references existing blocks
         run: |
           python3 - <<'PY'
-          import json, pathlib, sys
+          import json, pathlib, re, sys
           cfg = json.load(open("repos.json"))
-          have = {p.stem for p in pathlib.Path("blocks").glob("*.md")}
-          missing = {
-              b for blocks in cfg["repos"].values() for b in blocks
-          } - have
+          stems = {p.stem for p in pathlib.Path("blocks").glob("*.md")}
+          listed = {b for blocks in cfg["repos"].values() for b in blocks}
+          name = re.compile(r"[\w-]+(?::[\w-]+)?")
+          malformed = sorted(b for b in listed if not name.fullmatch(b))
+          if malformed:
+              sys.exit(
+                  "repos.json lists names that are not <block> or"
+                  f" <block>:<variant>: {malformed}"
+              )
+          missing = sorted(b for b in listed if b.replace(":", ".") not in stems)
           if missing:
-              sys.exit(f"repos.json references unknown blocks: {sorted(missing)}")
-          unused = have - {b for bs in cfg["repos"].values() for b in bs}
+              sys.exit(f"repos.json references unknown blocks: {missing}")
+          blocks = {s.partition(".")[0] for s in stems}
+          unused = blocks - {b.partition(":")[0] for b in listed}
           if unused:
               print(f"note: blocks not consumed by any repository: {sorted(unused)}")
+          variants = {s for s in stems if "." in s} - {
+              b.replace(":", ".") for b in listed
+          }
+          if variants:
+              print(f"note: variants no repository takes yet: {sorted(variants)}")
           PY
 
   # `check-drift/action.yml` runs inside a consumer's job, and this

@@ -60,6 +60,16 @@ COMMANDS = (
     "render.py names",
 )
 
+# How each turns a listed name into the file it compares and the region
+# it expects. A name is `<block>` or `<block>:<variant>`, and the two
+# would otherwise be free to disagree about which file a variant is read
+# from, or about whether a region listed with one is listed at all.
+NAMES = (
+    '*:*) file="${block%%:*}.${block#*:}.md" ;;',
+    '*) file="$block.md" ;;',
+    'listed="$listed${block%%:*} "',
+)
+
 # The pin warning is the one part of the check the two do not share a
 # file for: `warn_behind.sh` cannot be called from the workflow without
 # turning a step that shows as failed-but-not-blocking into one that
@@ -203,6 +213,11 @@ def main() -> int:
             any(command in line for line in action_calls),
             f"the action runs `{command}`",
         )
+
+    print("the two read a block name the same way")
+    for line in NAMES:
+        check(line in workflow, f"the workflow has `{line}`")
+        check(line in action, "the action has the same")
 
     print("the two name their steps alike")
     for step in STEPS:

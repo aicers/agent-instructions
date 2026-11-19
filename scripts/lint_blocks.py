@@ -14,6 +14,9 @@ import sys
 from pathlib import Path
 
 MAX_WIDTH = 76
+# One half of a block name: `<block>` or `<variant>`. Neither holds a
+# `.`, which is what lets a filename's stem be split at the first one.
+PART = re.compile(r"[\w-]+")
 ROOT = Path(__file__).resolve().parent.parent
 CODE_SPAN = re.compile(r"`[^`]*`")
 
@@ -50,9 +53,28 @@ def main() -> int:
     failures: list[str] = []
 
     for path in sorted((ROOT / "blocks").glob("*.md")):
-        name = path.stem
         lines = path.read_text(encoding="utf-8").rstrip("\n").splitlines()
         where = path.relative_to(ROOT)
+
+        # `<block>.md` is a block and `<block>.<variant>.md` a variant of
+        # it. A variant is another text for the block's own region, so its
+        # markers carry the block's name: the region a repository has is
+        # the same whichever text it takes, and switching rewrites it in
+        # place.
+        # A '.' always starts a variant, so `<block>..md` (an empty
+        # variant) is malformed: no listed name could select it.
+        name, dot, variant = path.stem.partition(".")
+        if not PART.fullmatch(name) or (
+            dot and not PART.fullmatch(variant)
+        ):
+            failures.append(
+                f"{where}: name it <block>.md or <block>.<variant>.md,"
+                " each part letters, digits, '-' or '_'"
+            )
+            continue
+        if not lines:
+            failures.append(f"{where}: empty")
+            continue
 
         if not re.fullmatch(rf"<!-- BEGIN shared:{re.escape(name)} -->",
                             lines[0]):
@@ -90,7 +112,7 @@ def main() -> int:
             # The markers carry the block's name, and a block may be named
             # after a repository — the one explaining the pipeline that
             # drives these repositories is. Which name they may carry was
-            # settled above, against the filename.
+            # settled above, against the filename's block part.
             is_marker = number in (1, len(lines))
             if not is_marker:
                 for repo in repos:
