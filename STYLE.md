@@ -66,6 +66,23 @@ filename:
 <!-- END shared:rust -->
 ```
 
+A variant of a block — another text for the same region, which a
+repository takes by listing `<block>:<variant>` — is the file
+`<block>.<variant>.md`, and its markers carry the block's name, not the
+filename's stem. `commit-messages.conventional.md` begins with
+`<!-- BEGIN shared:commit-messages -->`. A repository's region is the
+same whichever text it takes, so switching variants rewrites what is
+between the markers and moves nothing. The block and the variant names
+are each letters, digits, `-` and `_`, never a `.`: the first `.` in a
+filename is where the block's name ends. A variant keeps the `##`
+heading of its block's default text, since it fills the same place in
+every consumer's file, and it follows every other rule here.
+
+A region a repository does not carry yet is inserted, not hand-placed:
+the apply puts it right after the END marker of the nearest block before
+it in that repository's list. Where a new block goes is therefore decided
+by where it is listed in `repos.json`.
+
 The markers carry no version. Which release a repository is on is the
 `ref` in its `.agent-instructions.toml`, and whether the blocks it
 carries match that release is what the drift check itself decides, by

@@ -17,6 +17,36 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   default branch with `before`, and a dispatched branch with its
   merge-base with the default branch, and runs everything whenever it
   cannot tell.
+- Block variants. A block can carry more than one text, each a file
+  `blocks/<block>.<variant>.md` beside the default `blocks/<block>.md`,
+  and a repository takes one by listing `<block>:<variant>` in
+  `repos.json`. Whichever text it takes fills the same `shared:<block>`
+  region, and switching rewrites that region in place. The apply, the
+  pin file and both forms of the drift check read the new names; a pin
+  that lists no variant reads as before.
+- `commit-messages:conventional`, a variant for repositories whose pull
+  request titles follow Conventional Commits 1.0.0. It replaces the
+  capitalized-verb title rule, the "no prefixes" rule and the 50-character
+  preference with the Conventional title form, its type list, the `!` for
+  a breaking change, and a description written as a line a user of the
+  release would read.
+- `changelog:generated`, for a repository whose `CHANGELOG.md` the release
+  tool generates from pull request titles, and `changelog:manual-release`,
+  for one whose pull requests leave `CHANGELOG.md` alone and describe
+  their change in a `## Changelog` section of the pull request body
+  instead, for the release to collect.
+
+### Changed
+
+- The Commit messages rules move out of the `workflow` block into a block
+  of their own, `commit-messages`, which every repository takes. The text
+  is unchanged; applying this release moves the section from the top of
+  the workflow region to a `shared:commit-messages` region right after it.
+- The apply inserts a region a repository does not have yet instead of
+  failing with "add the markers first". The region goes right after the
+  nearest block before it in the repository's list, or before the first
+  shared region when there is none. A file with no shared region at all
+  is still refused.
 
 ## [0.5.0] - 2026-11-10
 

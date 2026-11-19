@@ -15,6 +15,22 @@ upstream can edit a consumer's file except through this script.
 `apply` replaces everything between (and including) the markers with the
 current contents of the block file. `check` reports drift without writing.
 
+A block file's name is `<block>.md`, or `<block>.<variant>.md` for a
+variant of it, and either one carries the markers `shared:<block>`. The
+region is named from the file's own BEGIN marker, never from its
+filename, so applying a different variant rewrites the same region and
+keeps its markers where they are.
+
+When the target has no region for the block, `apply` inserts one rather
+than failing, provided the file has at least one shared region to place
+it against. Each `--after <name>` names a block that comes before this one
+in the repository's list, nearest first; the new region goes right after
+the END marker of the first of those the file carries. With none of them
+in the file it goes right before the first shared region. A file with no
+shared region at all still fails: where the generated text starts in a
+file nothing has generated into yet is a decision for whoever onboards
+it, and nothing here can make it.
+
 `names` prints the block names a file carries, and `remove` deletes a
 marker pair and its content. A block retired upstream leaves its region
 behind otherwise: nothing renders it, and the drift check only compares
@@ -30,7 +46,9 @@ import re
 import sys
 from pathlib import Path
 
-BEGIN = r"<!--\s*BEGIN shared:{name}\b[^>]*-->"
+# Not `\b` after the name: a hyphen is a word boundary, so `shared:commit`
+# would otherwise find `shared:commit-messages`.
+BEGIN = r"<!--\s*BEGIN shared:{name}(?![\w.-])[^>]*-->"
 END = r"<!--\s*END shared:{name}\s*-->"
 
 
@@ -56,6 +74,41 @@ def names(text: str) -> list[str]:
     return re.findall(r"<!--\s*BEGIN shared:([\w.-]+)\b[^>]*-->", text)
 
 
+def has(text: str, name: str) -> bool:
+    """Does the file carry a region for `name`, either marker of it?
+
+    Either rather than both: a file with only one of the pair is broken,
+    and inserting a fresh pair beside the half that is there would hide
+    that rather than fail on it, which `span` then does.
+    """
+    escaped = re.escape(name)
+    return bool(
+        re.search(BEGIN.format(name=escaped), text)
+        or re.search(END.format(name=escaped), text)
+    )
+
+
+def insert(
+    text: str, want: str, after: list[str], target: Path
+) -> str | None:
+    """Place a region the file does not have yet.
+
+    After the nearest preceding block the file carries, so a block added
+    to a repository's list lands where the list puts it. The separator
+    that already followed that block's END marker is kept as it was, and
+    the new region is set off from it by one blank line, the way the
+    regions beside it are.
+    """
+    for name in after:
+        if has(text, name):
+            _, stop = span(text, name, target)
+            return text[:stop] + "\n\n" + want + text[stop:]
+    first = re.search(r"<!--\s*BEGIN shared:[\w.-]+\b[^>]*-->", text)
+    if first is None:
+        return None
+    return text[:first.start()] + want + "\n\n" + text[first.start():]
+
+
 def remove(target: Path, name: str) -> int:
     text = target.read_text(encoding="utf-8")
     if name not in names(text):
@@ -77,6 +130,13 @@ def main() -> int:
     parser.add_argument("mode", choices=("apply", "check", "names", "remove"))
     parser.add_argument("target", type=Path)
     parser.add_argument("block", type=Path, nargs="?")
+    parser.add_argument(
+        "--after",
+        action="append",
+        default=[],
+        metavar="name",
+        help="apply only: a block listed before this one, nearest first",
+    )
     args = parser.parse_args()
 
     if args.mode == "names":
@@ -94,6 +154,17 @@ def main() -> int:
     name = block_name(args.block)
     want = args.block.read_text(encoding="utf-8").rstrip("\n")
     text = args.target.read_text(encoding="utf-8")
+
+    if args.mode == "apply" and not has(text, name):
+        placed = insert(text, want, args.after, args.target)
+        if placed is None:
+            sys.exit(
+                f"{args.target}: no shared:{name} block; add the markers first"
+            )
+        args.target.write_text(placed, encoding="utf-8")
+        print(f"added shared:{name} to {args.target}")
+        return 0
+
     start, stop = span(text, name, args.target)
     have = text[start:stop]
 

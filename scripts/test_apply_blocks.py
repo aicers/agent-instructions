@@ -27,7 +27,16 @@ except ModuleNotFoundError:  # tomllib arrived in 3.11
     tomllib = None
 
 SCRIPTS = Path(__file__).resolve().parent
+ROOT = SCRIPTS.parent
 APPLY = SCRIPTS / "apply_blocks.py"
+# A real, public consumer's AGENTS.md as 0.5.0 left it, copied verbatim
+# from its default branch, with the Commit messages rules still inside
+# its workflow region. `.txt` so that this repository's markdownlint does
+# not take it for one of its own.
+CONSUMER = SCRIPTS / "fixtures" / "consumer-agents.txt"
+CONSUMER_PIN = (
+    'ref = "0.5.0"\nblocks = ["workflow", "agentcoop", "rust", "changelog"]\n'
+)
 PIN_FILE = SCRIPTS / "pin_file.py"
 
 RELEASE = {
@@ -337,29 +346,301 @@ def main() -> int:
             "nothing is written",
         )
 
-        # Naming a block before inserting its marker pair is how a
-        # repository takes on a new block, and getting the order wrong is
-        # the one failure the scheduled job hits after onboarding. It has
-        # to name the missing pair: the tree is left part-applied, and
-        # neither driver commits it -- sync.sh throws the clone away and
-        # apply.yml fails the job before its commit step -- so the message
-        # is all anyone sees.
+        # Naming a block in repos.json is how a repository takes on a new
+        # one, and nothing in the repository has to change first: the
+        # region goes after the block the list puts before it.
         print("a listed block the repository has no markers for")
         partial = consumer(
             tmp / "partial",
             agents="# Instructions\n\n"
-            "<!-- BEGIN shared:demo -->\nstale text\n<!-- END shared:demo -->\n",
+            "<!-- BEGIN shared:demo -->\nstale text\n<!-- END shared:demo -->\n"
+            "\n## Local\n\n- local content\n",
         )
         result = run(
             release(tmp / "partial-upstream", {"partial": ["demo", "other"]}),
             partial,
             "0.2.0",
         )
+        check(result.returncode == 0, "exits 0")
+        check(
+            (partial / "AGENTS.md").read_text(encoding="utf-8")
+            == "# Instructions\n\n"
+            + RELEASE["demo"]
+            + "\n"
+            + RELEASE["other"]
+            + "\n## Local\n\n- local content\n",
+            "inserts it right after its predecessor's END marker",
+        )
+        check(
+            'blocks = ["demo", "other"]' in pin_of(partial),
+            "and the pin names it",
+        )
+        before = (partial / "AGENTS.md").read_text(encoding="utf-8")
+        run(tmp / "partial-upstream", partial, "0.2.0")
+        check(
+            (partial / "AGENTS.md").read_text(encoding="utf-8") == before,
+            "a second apply changes nothing",
+        )
+
+        # In list order, so a block inserted a moment ago is the
+        # predecessor the next one lands behind.
+        print("several missing blocks in a row")
+        chain_blocks = dict(RELEASE)
+        for extra in ("one", "two", "first"):
+            chain_blocks[extra] = (
+                f"<!-- BEGIN shared:{extra} -->\n## {extra.title()}\n\n"
+                f"- {extra} text\n<!-- END shared:{extra} -->\n"
+            )
+        chain = consumer(
+            tmp / "chain",
+            agents="# Instructions\n\n" + RELEASE["demo"] + "\n"
+            + RELEASE["other"] + "\n## Local\n",
+        )
+        result = run(
+            release(
+                tmp / "chain-upstream",
+                {"chain": ["first", "demo", "one", "two", "other"]},
+                blocks=chain_blocks,
+            ),
+            chain,
+            "0.2.0",
+        )
+        text = (chain / "AGENTS.md").read_text(encoding="utf-8")
+        check(result.returncode == 0, "exits 0")
+        render_names = subprocess.run(
+            [sys.executable, str(SCRIPTS / "render.py"), "names",
+             str(chain / "AGENTS.md")],
+            capture_output=True, text=True,
+        ).stdout.split()
+        check(
+            render_names == ["first", "demo", "one", "two", "other"],
+            "each lands after the one before it, an inserted one included",
+        )
+        check(
+            text.startswith("# Instructions\n\n<!-- BEGIN shared:first -->"),
+            "one with no predecessor in the file goes before the first region",
+        )
+        check("\n\n\n" not in text, "every region is set off by one blank line")
+        check(text.endswith("\n## Local\n"), "the repository's own text stays")
+
+        # The block before it in the list has been retired, and its region
+        # is about to be removed. Landing after that region would leave the
+        # new one wherever the retired one was, not where the list puts it.
+        print("a missing block whose predecessor is retired")
+        skip_blocks = dict(chain_blocks)
+        retiring = consumer(
+            tmp / "retiring",
+            agents="# Instructions\n\n"
+            "<!-- BEGIN shared:gone -->\n- old\n<!-- END shared:gone -->\n\n"
+            + RELEASE["demo"]
+            + "\n## Local\n",
+        )
+        result = run(
+            release(
+                tmp / "retiring-upstream",
+                {"retiring": ["demo", "gone", "one"]},
+                blocks=skip_blocks,
+            ),
+            retiring,
+            "0.2.0",
+        )
+        check(result.returncode == 0, "exits 0")
+        check(
+            (retiring / "AGENTS.md").read_text(encoding="utf-8")
+            == "# Instructions\n\n" + RELEASE["demo"] + "\n"
+            + chain_blocks["one"] + "\n## Local\n",
+            "goes after the nearest predecessor the release still has",
+        )
+
+        # Where the generated text starts in a file that has none is a
+        # decision for whoever onboards it.
+        print("a repository whose file has no shared region at all")
+        bare = consumer(tmp / "bare", agents="# Instructions\n\n## Local\n")
+        result = run(
+            release(tmp / "bare-upstream", {"bare": ["demo"]}), bare, "0.2.0"
+        )
         check(result.returncode != 0, "exits non-zero")
         check(
-            "no shared:other block" in result.stderr
+            "no shared:demo block" in result.stderr
             and "add the markers first" in result.stderr,
-            "names the missing pair rather than the block that applied",
+            "with the message it always gave",
+        )
+        check(
+            (bare / "AGENTS.md").read_text(encoding="utf-8")
+            == "# Instructions\n\n## Local\n",
+            "and the file is left as it was",
+        )
+
+        # A variant is another text for the same region. Switching between
+        # it and the default rewrites what is between the markers, and the
+        # markers stay where they were.
+        print("a block listed with a variant")
+        variants = dict(RELEASE)
+        variants["demo.alt"] = """<!-- BEGIN shared:demo -->
+## Demo
+
+- the alternative text
+<!-- END shared:demo -->
+"""
+        switching = consumer(tmp / "switching")
+        alt_upstream = release(
+            tmp / "alt-upstream",
+            {"switching": ["demo:alt", "other"]},
+            blocks=variants,
+        )
+        result = run(alt_upstream, switching, "0.2.0")
+        text = (switching / "AGENTS.md").read_text(encoding="utf-8")
+        check(result.returncode == 0, "exits 0")
+        check(
+            "<!-- BEGIN shared:demo -->\n## Demo\n\n- the alternative text\n"
+            "<!-- END shared:demo -->" in text,
+            "renders the variant's text into shared:demo",
+        )
+        check("shared:demo:alt" not in text and "shared:demo.alt" not in text,
+              "and names the region after the block, not the variant")
+        check(
+            'blocks = ["demo:alt", "other"]' in pin_of(switching),
+            "the pin records the variant",
+        )
+        check(read(switching, "blocks").stdout == "demo:alt other\n",
+              "and reads it back")
+        check("shared:retired" not in text,
+              "an unlisted region is still removed")
+        with_variant = text
+
+        result = run(
+            release(
+                tmp / "default-upstream",
+                {"switching": ["demo", "other"]},
+                blocks=variants,
+            ),
+            switching,
+            "0.3.0",
+        )
+        text = (switching / "AGENTS.md").read_text(encoding="utf-8")
+        check(result.returncode == 0, "switching to the default exits 0")
+        check(
+            text == with_variant.replace(
+                "- the alternative text", "- current text"
+            ),
+            "replaces only the text between the markers",
+        )
+        check('blocks = ["demo", "other"]' in pin_of(switching),
+              "and the pin drops the variant")
+
+        result = run(alt_upstream, switching, "0.4.0")
+        check(
+            (switching / "AGENTS.md").read_text(encoding="utf-8")
+            == with_variant,
+            "switching back restores the variant in the same place",
+        )
+
+        print("a variant the release does not carry")
+        missing = consumer(tmp / "missing")
+        result = run(
+            release(
+                tmp / "missing-upstream",
+                {"missing": ["demo:nope", "other"]},
+                blocks=variants,
+            ),
+            missing,
+            "0.2.0",
+        )
+        check(result.returncode != 0, "exits non-zero when the block is there")
+        check("not a retirement" in result.stderr, "says why")
+        check(
+            (missing / "AGENTS.md").read_text(encoding="utf-8") == AGENTS
+            and pin_of(missing) == PIN,
+            "nothing is written",
+        )
+
+        result = run(
+            release(
+                tmp / "gone-upstream",
+                {"missing": ["demo", "other", "retired:alt"]},
+                blocks=variants,
+            ),
+            missing,
+            "0.2.0",
+        )
+        check(
+            result.returncode == 0 and "retiring here too" in result.stdout,
+            "a variant of a block the release no longer has is retired",
+        )
+        check(
+            'blocks = ["demo", "other"]' in pin_of(missing)
+            and "shared:retired"
+            not in (missing / "AGENTS.md").read_text(encoding="utf-8"),
+            "and its region goes with it",
+        )
+
+        print("names repos.json cannot mean")
+        for description, listing in (
+            ("a dot in place of the colon", ["demo.alt", "other"]),
+            ("an empty block", [":alt", "other"]),
+            ("an empty variant", ["demo:", "other"]),
+            ("two variants", ["demo:alt:more", "other"]),
+            ("one region named twice", ["demo", "demo:alt"]),
+        ):
+            slug = description.replace(" ", "-")
+            odd = consumer(tmp / f"names-{slug}")
+            result = run(
+                release(
+                    tmp / f"names-{slug}-upstream",
+                    {odd.name: listing},
+                    blocks=variants,
+                ),
+                odd,
+                "0.2.0",
+            )
+            check(result.returncode != 0, f"{description} exits non-zero")
+            check(
+                (odd / "AGENTS.md").read_text(encoding="utf-8") == AGENTS
+                and pin_of(odd) == PIN,
+                f"{description} writes nothing",
+            )
+
+        # What this tree's repos.json does to a repository that is on
+        # 0.5.0 today: the Commit messages section leaves the workflow
+        # region for a region of its own right after it, and nothing else
+        # in the file moves or changes.
+        print("this tree applied to a current consumer")
+        original = CONSUMER.read_text(encoding="utf-8")
+        current = consumer(
+            tmp / "bootroot", agents=original, pin=CONSUMER_PIN
+        )
+        result = run(ROOT, current, "0.6.0")
+        applied = (current / "AGENTS.md").read_text(encoding="utf-8")
+        check(result.returncode == 0, "exits 0")
+        heading = "## Commit messages\n"
+        section_start = original.index(heading)
+        section_end = original.index("## Branching and pushing\n")
+        section = original[section_start:section_end].rstrip("\n")
+        without = original[:section_start] + original[section_end:]
+        workflow_end = "<!-- END shared:workflow -->"
+        expected = without.replace(
+            workflow_end,
+            workflow_end
+            + "\n\n<!-- BEGIN shared:commit-messages -->\n"
+            + section
+            + "\n<!-- END shared:commit-messages -->",
+            1,
+        )
+        check(applied == expected,
+              "only the section moves, and its markers are added")
+        check(
+            sorted(applied.splitlines())
+            == sorted(
+                original.splitlines()
+                + ["<!-- BEGIN shared:commit-messages -->",
+                   "<!-- END shared:commit-messages -->"]
+            ),
+            "every line it had is still there, once",
+        )
+        check(
+            'blocks = ["workflow", "commit-messages", "agentcoop", "rust",'
+            ' "changelog"]' in pin_of(current),
+            "the pin names the new block where the list does",
         )
 
         # `target` is a repos.json key and reaches the script unexamined,

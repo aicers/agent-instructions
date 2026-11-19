@@ -30,6 +30,13 @@ schedules against itself. Writing it twice, once in bash and once in
 workflow YAML, would make "the two agree" a promise rather than a
 property. It lives here instead and both call it.
 
+A name in that list is `<block>` or `<block>:<variant>`. Either way its
+region is `shared:<block>`; the text comes from `blocks/<block>.md`, or
+from `blocks/<block>.<variant>.md` when a variant is named. A region the
+repository does not have yet is inserted after the one the list puts
+before it, so naming a new block in `repos.json` is all it takes to
+deliver it.
+
 `render.py` and `pin_file.py` are driven through their command lines —
 the contract their own tests cover — rather than imported and half
 reimplemented here.
@@ -39,6 +46,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -46,6 +54,23 @@ from pathlib import Path
 SCRIPTS = Path(__file__).resolve().parent
 RENDER = SCRIPTS / "render.py"
 PIN_FILE = SCRIPTS / "pin_file.py"
+
+# The same shape `pin_file.py` holds a name to. Checked here as well, and
+# first, so that a malformed entry fails before any file is looked up for
+# it: `changelog.generated` would otherwise find no `.md` of that name and
+# be retired, silently, rather than refused.
+NAME = re.compile(r"[\w-]+(?::[\w-]+)?")
+
+
+def base(name: str) -> str:
+    """The block a listed name renders into: the part before `:`."""
+    return name.partition(":")[0]
+
+
+def source(blocks_dir: Path, name: str) -> Path:
+    """The file a listed name takes its text from."""
+    block, _, variant = name.partition(":")
+    return blocks_dir / (f"{block}.{variant}.md" if variant else f"{block}.md")
 
 
 def run(script: Path, *args: str) -> int:
@@ -134,11 +159,51 @@ def main() -> int:
 
     blocks_dir = args.release / "blocks"
 
+    malformed = [b for b in listed if not NAME.fullmatch(b)]
+    if malformed:
+        print(
+            f"{config}: {', '.join(map(repr, malformed))} for {name} is not"
+            " <block> or <block>:<variant>",
+            file=sys.stderr,
+        )
+        return 1
+    # Two names for one region would render into it in turn, and whichever
+    # came last would win while the pin recorded both.
+    bases = [base(b) for b in listed]
+    doubled = sorted({b for b in bases if bases.count(b) > 1})
+    if doubled:
+        print(
+            f"{config}: {name} lists shared:{', shared:'.join(doubled)}"
+            " more than once",
+            file=sys.stderr,
+        )
+        return 1
+
+    # A variant whose block the release still carries has not been
+    # retired: the block is there, and only the text this repository asked
+    # for is missing. Retiring it would strip the region and drop the name
+    # from the pin, and the next release to carry the variant would have
+    # nowhere to put it back. So that fails, before anything is written.
+    unknown = [
+        b for b in listed
+        if ":" in b
+        and not source(blocks_dir, b).is_file()
+        and (blocks_dir / f"{base(b)}.md").is_file()
+    ]
+    if unknown:
+        print(
+            f"{blocks_dir} carries no variant {', '.join(unknown)} of a block"
+            f" it still has; {name} lists it, and a missing variant is not a"
+            " retirement",
+            file=sys.stderr,
+        )
+        return 1
+
     # A block repos.json lists that the release does not carry has been
     # retired upstream. Drop it here rather than failing: it is removed
     # below along with any unlisted block, and the pin file then stops
     # naming it, which is what un-reds that repository's drift check.
-    wanted = [b for b in listed if (blocks_dir / f"{b}.md").is_file()]
+    wanted = [b for b in listed if source(blocks_dir, b).is_file()]
     retired = [b for b in listed if b not in wanted]
     if retired:
         print(f"{args.tag} has no {', '.join(retired)}; retiring here too")
@@ -156,19 +221,33 @@ def main() -> int:
     if run(PIN_FILE, "write", str(root), args.tag, *wanted):
         return 1
 
-    for block in wanted:
-        if run(RENDER, "apply", str(target), str(blocks_dir / f"{block}.md")):
+    # In list order, so a block inserted here is already in place for the
+    # one after it to land behind. The blocks before each one go along
+    # nearest first, and only the ones this release still has: a retired
+    # block's region is about to be removed, and a block placed after it
+    # would be left wherever that region used to be rather than where the
+    # list puts it.
+    for index, block in enumerate(wanted):
+        after = [
+            option
+            for earlier in reversed(wanted[:index])
+            for option in ("--after", base(earlier))
+        ]
+        if run(RENDER, "apply", str(target), str(source(blocks_dir, block)),
+               *after):
             return 1
 
     # A block this release does not have leaves its region behind otherwise:
     # nothing renders it, and the drift check only compares the blocks the
     # pin file lists, so a stale copy of a rule sits beside its replacement
-    # with nothing to notice.
+    # with nothing to notice. Compared by region, so a block listed with a
+    # variant keeps the region it was just rendered into.
+    keep = {base(b) for b in wanted}
     present = carried(target)
     if present is None:
         return 1
     for block in present:
-        if block not in wanted and run(RENDER, "remove", str(target), block):
+        if block not in keep and run(RENDER, "remove", str(target), block):
             return 1
 
     return 0

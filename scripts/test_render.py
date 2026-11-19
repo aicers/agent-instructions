@@ -32,9 +32,18 @@ OTHER = """<!-- BEGIN shared:other -->
 failures: list[str] = []
 
 
-def run(mode: str, target: Path, block: Path) -> subprocess.CompletedProcess:
+def run(
+    mode: str, target: Path, block: Path, *after: str
+) -> subprocess.CompletedProcess:
     return subprocess.run(
-        [sys.executable, str(RENDER), mode, str(target), str(block)],
+        [
+            sys.executable,
+            str(RENDER),
+            mode,
+            str(target),
+            str(block),
+            *(option for name in after for option in ("--after", name)),
+        ],
         capture_output=True,
         text=True,
     )
@@ -179,6 +188,122 @@ def main() -> int:
         check(
             target.read_text(encoding="utf-8") == text,
             "removing an absent block writes nothing",
+        )
+
+        print("a variant file")
+        # Named `<block>.<variant>.md` and carrying `shared:<block>`: the
+        # region comes from the marker, so a variant rewrites the block's
+        # own region rather than looking for one named after the file.
+        variant = root / "demo.alt.md"
+        variant.write_text(
+            "<!-- BEGIN shared:demo -->\n## Demo\n\n- variant text\n"
+            "<!-- END shared:demo -->\n",
+            encoding="utf-8",
+        )
+        switched = root / "switched.md"
+        switched.write_text(
+            f"# Title\n\n{BLOCK}\n{OTHER}\n## Local\n", encoding="utf-8"
+        )
+        check(run("check", switched, variant).returncode == 1,
+              "check reports the default text as drift from the variant")
+        check(run("apply", switched, variant).returncode == 0, "apply exits 0")
+        check(
+            switched.read_text(encoding="utf-8")
+            == f"# Title\n\n{BLOCK.replace('current text', 'variant text')}"
+            f"\n{OTHER}\n## Local\n",
+            "apply rewrites shared:demo in place",
+        )
+        check(run("check", switched, variant).returncode == 0,
+              "and check then passes against the variant")
+        run("apply", switched, block)
+        check(
+            switched.read_text(encoding="utf-8")
+            == f"# Title\n\n{BLOCK}\n{OTHER}\n## Local\n",
+            "applying the default puts the default back, markers unmoved",
+        )
+
+        print("a region the file does not have yet")
+        new = root / "new.md"
+        new.write_text(
+            "<!-- BEGIN shared:new -->\n## New\n\n- new text\n"
+            "<!-- END shared:new -->\n",
+            encoding="utf-8",
+        )
+        body = f"# Title\n\n{BLOCK}\n{OTHER}\n## Local\n"
+        growing = root / "growing.md"
+
+        growing.write_text(body, encoding="utf-8")
+        check(run("check", growing, new).returncode != 0,
+              "check fails rather than inserting")
+        check(growing.read_text(encoding="utf-8") == body,
+              "and writes nothing")
+
+        result = run("apply", growing, new, "demo")
+        check(result.returncode == 0, "apply exits 0")
+        check(
+            growing.read_text(encoding="utf-8")
+            == f"# Title\n\n{BLOCK}\n{new.read_text()}\n{OTHER}\n## Local\n",
+            "goes right after the END marker of the block named by --after",
+        )
+        check(run("check", growing, new).returncode == 0,
+              "and is current afterwards")
+
+        growing.write_text(body, encoding="utf-8")
+        run("apply", growing, new, "absent", "other", "demo")
+        check(
+            growing.read_text(encoding="utf-8")
+            == f"# Title\n\n{BLOCK}\n{OTHER}\n{new.read_text()}\n## Local\n",
+            "the first --after the file carries wins, absent ones skipped",
+        )
+
+        growing.write_text(body, encoding="utf-8")
+        run("apply", growing, new, "absent")
+        check(
+            growing.read_text(encoding="utf-8")
+            == f"# Title\n\n{new.read_text()}\n{BLOCK}\n{OTHER}\n## Local\n",
+            "with none of them present, before the first shared region",
+        )
+
+        growing.write_text(f"# Title\n\n{BLOCK}", encoding="utf-8")
+        run("apply", growing, new, "demo")
+        check(
+            growing.read_text(encoding="utf-8")
+            == f"# Title\n\n{BLOCK}\n{new.read_text()}",
+            "at the end of the file, the file still ends in one newline",
+        )
+
+        result = run("apply", bare, new, "demo")
+        check(result.returncode != 0, "a file with no shared region fails")
+        check("add the markers first" in result.stderr,
+              "with the message it always gave")
+        check(bare.read_text(encoding="utf-8") == "no markers here\n",
+              "and is left alone")
+
+        half = root / "half.md"
+        half.write_text(
+            f"# Title\n\n{BLOCK}\n<!-- BEGIN shared:new -->\n- orphan\n",
+            encoding="utf-8",
+        )
+        check(run("apply", half, new, "demo").returncode != 0,
+              "half a marker pair fails instead of gaining a second BEGIN")
+
+        print("a name that another one starts with")
+        prefix = root / "commit.md"
+        prefix.write_text(
+            "<!-- BEGIN shared:commit -->\n- short\n<!-- END shared:commit -->\n",
+            encoding="utf-8",
+        )
+        longer = root / "longer.md"
+        longer.write_text(
+            "# Title\n\n<!-- BEGIN shared:commit-messages -->\n- long\n"
+            "<!-- END shared:commit-messages -->\n",
+            encoding="utf-8",
+        )
+        run("apply", longer, prefix, "commit-messages")
+        check(
+            "- long" in longer.read_text(encoding="utf-8")
+            and "- short" in longer.read_text(encoding="utf-8"),
+            "shared:commit is not found inside shared:commit-messages",
         )
 
     print()

@@ -111,11 +111,18 @@ runs:
         TARGET: ${{ inputs.target }}
       run: |
         status=0
-        # BLOCKS is a space-separated list and is meant to split.
+        # BLOCKS is a space-separated list and is meant to split. Each
+        # name is `<block>` or `<block>:<variant>`; a variant's text is
+        # `<block>.<variant>.md`, and its markers are `shared:<block>`
+        # all the same, which is the region render.py compares it with.
         for block in $BLOCKS; do
+          case $block in
+            *:*) file="${block%%:*}.${block#*:}.md" ;;
+            *) file="$block.md" ;;
+          esac
           python3 "$SCRIPTS/render.py" check \
             "$TARGET" \
-            "$BLOCKS_DIR/blocks/$block.md" || status=1
+            "$BLOCKS_DIR/blocks/$file" || status=1
         done
         if [ "$status" -ne 0 ]; then
           echo "::error::$TARGET is out of date with aicers/agent-instructions."
@@ -137,7 +144,12 @@ runs:
         TARGET: ${{ inputs.target }}
       run: |
         set -euo pipefail
-        listed=" $BLOCKS "
+        # A region is named after the part of a listed name before any
+        # `:`, so a block listed with a variant is listed all the same.
+        listed=" "
+        for block in $BLOCKS; do
+          listed="$listed${block%%:*} "
+        done
         status=0
         carried=$(python3 "$SCRIPTS/render.py" names "$TARGET")
         for present in $carried; do

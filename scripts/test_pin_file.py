@@ -101,6 +101,55 @@ def main() -> int:
         result = run("read", str(root))
         check(result.returncode != 0, "fails on a missing ref")
 
+    print("block names with a variant")
+    with tempfile.TemporaryDirectory() as directory:
+        root = repo(directory, current=None)
+        names = ["workflow", "commit-messages:conventional",
+                 "changelog:generated"]
+        result = run("write", str(root), "0.5.0", *names)
+        check(result.returncode == 0, "writes them")
+        check(
+            'blocks = ["workflow", "commit-messages:conventional",'
+            ' "changelog:generated"]'
+            in (root / CURRENT).read_text(encoding="utf-8"),
+            "as they were given",
+        )
+        result = run("read", str(root))
+        check(result.returncode == 0, "reads them back")
+        check(
+            result.stdout == "ref=0.5.0\nblocks=workflow"
+            " commit-messages:conventional changelog:generated\n",
+            "unchanged, beside a ref that still reads",
+        )
+
+    print("block names that are not <block> or <block>:<variant>")
+    for bad in (":x", "x:", "x:y:z", "x.y", "changelog.generated"):
+        with tempfile.TemporaryDirectory() as directory:
+            root = repo(directory, current=None)
+            result = run("write", str(root), "0.5.0", "workflow", bad)
+            check(result.returncode != 0, f"refuses to write {bad!r}")
+            check(not (root / CURRENT).exists(), f"writes nothing for {bad!r}")
+        with tempfile.TemporaryDirectory() as directory:
+            root = repo(
+                directory,
+                current=f'ref = "0.5.0"\nblocks = ["workflow", "{bad}"]\n',
+            )
+            result = run("read", str(root))
+            check(result.returncode != 0, f"refuses to read {bad!r}")
+            check("not a usable block name" in result.stderr,
+                  f"says {bad!r} is the problem")
+
+    print("a release tag keeps its shape")
+    for tag in ("0.5.0", "v2", "1.0.0-rc.1"):
+        with tempfile.TemporaryDirectory() as directory:
+            root = repo(directory, current=None)
+            result = run("write", str(root), tag, "workflow")
+            check(
+                result.returncode == 0
+                and run("read", str(root), "ref").stdout == f"{tag}\n",
+                f"{tag!r} is written and read",
+            )
+
     print()
     if failures:
         print(f"{len(failures)} failure(s)")

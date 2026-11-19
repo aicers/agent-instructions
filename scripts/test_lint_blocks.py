@@ -133,6 +133,34 @@ def main() -> int:
     check(result.returncode != 0, "fails the marker check")
     check("first line must be" in result.stdout, "says which line is wrong")
 
+    print("a variant of a block")
+    # `<block>.<variant>.md` fills the block's own region, so its markers
+    # carry the block's name and not the file's stem.
+    result = lint(
+        "changelog.generated",
+        raw="<!-- BEGIN shared:changelog -->\n## Changelog\n\n- text\n"
+        "<!-- END shared:changelog -->\n",
+    )
+    check(result.returncode == 0, "passes with the block's name in its markers")
+    result = lint(
+        "changelog.generated",
+        raw="<!-- BEGIN shared:changelog.generated -->\n## Changelog\n\n"
+        "- text\n<!-- END shared:changelog.generated -->\n",
+    )
+    check(result.returncode != 0, "fails with the file's stem in its markers")
+    check(
+        "'<!-- BEGIN shared:changelog -->'" in result.stdout
+        and "'<!-- END shared:changelog -->'" in result.stdout,
+        "says which name the markers must carry",
+    )
+    result = lint(
+        "changelog.generated.more",
+        raw="<!-- BEGIN shared:changelog -->\n- text\n"
+        "<!-- END shared:changelog -->\n",
+    )
+    check(result.returncode != 0, "fails a filename with two variant parts")
+    check("<block>.<variant>.md" in result.stdout, "says how to name it")
+
     print()
     if failures:
         print(f"{len(failures)} failure(s)")
