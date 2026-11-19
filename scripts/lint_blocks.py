@@ -61,9 +61,11 @@ def main() -> int:
         # markers carry the block's name: the region a repository has is
         # the same whichever text it takes, and switching rewrites it in
         # place.
-        name, _, variant = path.stem.partition(".")
+        # A '.' always starts a variant, so `<block>..md` (an empty
+        # variant) is malformed: no listed name could select it.
+        name, dot, variant = path.stem.partition(".")
         if not PART.fullmatch(name) or (
-            variant and not PART.fullmatch(variant)
+            dot and not PART.fullmatch(variant)
         ):
             failures.append(
                 f"{where}: name it <block>.md or <block>.<variant>.md,"

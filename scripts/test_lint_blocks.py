@@ -160,6 +160,13 @@ def main() -> int:
     )
     check(result.returncode != 0, "fails a filename with two variant parts")
     check("<block>.<variant>.md" in result.stdout, "says how to name it")
+    result = lint(
+        "changelog.",
+        raw="<!-- BEGIN shared:changelog -->\n- text\n"
+        "<!-- END shared:changelog -->\n",
+    )
+    check(result.returncode != 0, "fails a filename with an empty variant")
+    check("<block>.<variant>.md" in result.stdout, "says how to name it")
 
     print()
     if failures:

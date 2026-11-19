@@ -10,8 +10,8 @@
 - A breaking change puts `!` before the colon, as in
   `feat(api)!: drop the v1 endpoints`. A `BREAKING CHANGE:` footer
   alone is not enough: merge checks and reviewers read only the title.
-  A change that alters only a wire or stored format is breaking too,
-  and takes `!` even though no API compatibility check detects it.
+  A breaking change that alters only a wire or stored format takes `!`
+  too, even though no API compatibility check detects it.
 - The description is English and imperative, starts with a lowercase
   letter, and has no trailing period and no issue or PR number. The
   merge appends the pull request's number to it, as `(#N)`.
