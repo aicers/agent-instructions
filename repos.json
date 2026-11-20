@@ -10,8 +10,8 @@
     "estore":          ["workflow", "commit-messages", "agentcoop", "rust", "changelog"],
     "estore-protocol": ["workflow", "commit-messages", "agentcoop", "rust", "changelog"],
     "giganto":         ["workflow", "commit-messages", "agentcoop", "rust", "changelog"],
-    "giganto-client":  ["workflow", "commit-messages", "agentcoop", "rust", "changelog"],
-    "hog":             ["workflow", "commit-messages", "agentcoop", "rust", "changelog"],
+    "giganto-client":  ["workflow", "commit-messages:conventional", "agentcoop", "rust", "changelog:generated"],
+    "hog":             ["workflow", "commit-messages:conventional", "agentcoop", "rust", "changelog:generated"],
     "multifold":       ["workflow", "commit-messages", "agentcoop", "rust", "changelog"],
     "piglet":          ["workflow", "commit-messages", "agentcoop", "rust", "changelog"],
     "reproduce":       ["workflow", "commit-messages", "agentcoop", "rust", "changelog"],
@@ -22,7 +22,7 @@
     "roxyd":           ["workflow", "commit-messages", "agentcoop", "rust", "changelog"],
     "agentcoop":       ["workflow", "commit-messages", "agentcoop", "node", "changelog"],
     "aice-web-next":   ["workflow", "commit-messages", "agentcoop", "node", "db-migrations", "changelog"],
-    "aimer-web":       ["workflow", "commit-messages", "agentcoop", "node", "db-migrations", "changelog"],
+    "aimer-web":       ["workflow", "commit-messages:conventional", "agentcoop", "node", "db-migrations", "changelog:generated"],
     "taco":            ["workflow", "commit-messages", "agentcoop", "changelog"]
   }
 }
