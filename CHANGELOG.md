@@ -4,6 +4,19 @@ This file documents recent notable changes to this project. The format of this
 file is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- `commit-messages:conventional` no longer says that the pull request
+  body becomes the squash commit's body. The pull request body still
+  carries `Closes #N` or `Part of #N`, and `Closes #N` closes the issue
+  at merge. The squash commit takes the body of the commit message an
+  AgentCoop run suggested on the pull request, else the body of the
+  pull request's only commit, else no body, followed by the pull
+  request's `## Changelog` section where the Changelog rules call for
+  one.
+
 ## [0.6.1] - 2026-11-20
 
 ### Changed
@@ -548,6 +561,7 @@ contract has never run in a consumer once.
   and would leave every pull request pinned to one release and filled from
   another. `scripts/test_sync.py` covers it.
 
+[Unreleased]: https://github.com/aicers/agent-instructions/compare/0.6.1...main
 [0.6.1]: https://github.com/aicers/agent-instructions/compare/0.6.0...0.6.1
 [0.6.0]: https://github.com/aicers/agent-instructions/compare/0.5.0...0.6.0
 [0.5.0]: https://github.com/aicers/agent-instructions/compare/0.4.3...0.5.0
