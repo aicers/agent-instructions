@@ -18,8 +18,13 @@
 - Write the description as a line a user of the release would read:
   what changed for them, not how the code got there.
 - The pull request body carries `Closes #N`, or `Part of #N` when the
-  pull request delivers part of the issue, and becomes the body of the
-  squash commit.
+  pull request delivers part of the issue; `Closes #N` closes the issue
+  at merge. The pull request body does not become the squash commit's
+  body: the merge takes the body of the commit message an AgentCoop run
+  suggested on the pull request, else the body of the pull request's
+  only commit, else no body. A `## Changelog` section in the pull
+  request body, where the Changelog rules call for one, is appended
+  after it.
 - Body: wrap at 72 characters, free-form, explain *why* not *what*.
 - Separate title and body with a blank line.
 - Do NOT rely on literal `\n` escapes for a commit body — they land in
