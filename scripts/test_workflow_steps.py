@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the shell that lives inside workflow YAML, against local trees.
+"""Run workflow shell steps against local trees and GitHub API fixtures.
 
 Some of what a consumer depends on is not a script here but a `run:`
 block: the drift check's "Compare blocks" and "Reject blocks this
@@ -18,7 +18,8 @@ against a blocks tree built here, under the shell GitHub would use: `bash
 --noprofile --norc -eo pipefail` for a step that says `shell: bash`, and
 `bash -e` for one that names none.
 
-Run it directly; it needs nothing beyond the standard library.
+The release and changelog gates run with a fake `gh` and real `jq`.
+Run it directly with Python, Bash and jq.
 """
 
 from __future__ import annotations
@@ -34,6 +35,9 @@ ROOT = Path(__file__).resolve().parent.parent
 ACTION = ROOT / "check-drift" / "action.yml"
 WORKFLOW = ROOT / ".github" / "workflows" / "check-drift.yml"
 CI = ROOT / ".github" / "workflows" / "ci.yml"
+RELEASE = CI.with_name("release-please.yml")
+CHANGELOG = CI.with_name("changelog.yml")
+REPOSITORY = "aicers/agent-instructions"
 
 COMPARE = "Compare blocks"
 REJECT = "Reject blocks this repository no longer lists"
@@ -292,6 +296,121 @@ def roster(tmp: Path) -> None:
         check(result.returncode != 0, f"fails the malformed name {bad!r}")
 
 
+def github_step(
+    tmp: Path, workflow: Path, name: str,
+    responses: list[tuple[list[str], list | None]],
+) -> tuple[subprocess.CompletedProcess, str]:
+    output = tmp / "output"
+    output.write_text("")
+    result = execute(*step(workflow, name), tmp, {
+        "PATH": f"{tmp}{os.pathsep}{os.environ['PATH']}",
+        "GITHUB_REPOSITORY": REPOSITORY,
+        "GITHUB_OUTPUT": str(output),
+        "GH_RESPONSES": json.dumps(responses),
+        "NUMBER": "1",
+    })
+    return result, output.read_text()
+
+
+def changelog(tmp: Path) -> None:
+    print("the changelog gate")
+    endpoint = f"repos/{REPOSITORY}/pulls/1"
+    files_args = ["api", "--paginate", f"{endpoint}/files?per_page=100", "--jq"]
+    root_edit = {"filename": "CHANGELOG.md"}
+    other_edit = {"filename": "docs/CHANGELOG.md"}
+    rename = {"filename": "archive.md", "previous_filename": "CHANGELOG.md"}
+    cases = (
+        ("ordinary PR changes the changelog", "topic", "User", [[root_edit]], 1, 1),
+        ("human opens a release-like PR", "release-please--main", "User", [[root_edit]], 1, 1),
+        ("bot opens a release PR", "release-please--main", "Bot", [[root_edit]], 1, 0),
+        ("only a nested changelog changes", "topic", "User", [[other_edit]], 1, 0),
+        ("second page renames the root changelog", "topic", "User", [[other_edit], [rename]], 2, 1),
+        ("the API returns too few files", "topic", "User", [[]], 1, 1),
+        ("the files endpoint fails", "topic", "User", None, 1, 1),
+    )
+    for description, branch, user_type, pages, count, status in cases:
+        pull = {
+            "user": {"login": "github-actions[bot]" if user_type == "Bot" else "person",
+                     "type": user_type},
+            "head": {"repo": {"full_name": REPOSITORY}, "ref": branch},
+            "base": {"repo": {"default_branch": "main"}, "ref": "main"},
+            "changed_files": count,
+        }
+        result, _ = github_step(tmp, CHANGELOG, "Allow CHANGELOG.md only in the release PR", [
+            (["api", endpoint], [pull]),
+            (files_args, pages),
+        ])
+        check(result.returncode == status, description)
+
+
+def release_gate(tmp: Path) -> None:
+    print("the merged release CI gate")
+    endpoint = f"repos/{REPOSITORY}"
+    issues_args = ["api", "--paginate", "-X", "GET", f"{endpoint}/issues",
+                   "-f", "state=closed", "-f", "labels=autorelease: pending",
+                   "-f", "per_page=100", "--jq"]
+    first, second = "1" * 40, "2" * 40
+    merged = {"merged_at": "2026-11-21T00:00:00Z"}
+    unmerged = {"number": 3, "pull_request": {"merged_at": None}}
+    issues = [[unmerged, {"number": 1, "pull_request": merged}],
+              [{"number": 2, "pull_request": merged}]]
+
+    def ci_args(sha: str) -> list[str]:
+        return ["api", "-X", "GET", f"{endpoint}/actions/workflows/ci.yml/runs",
+                "-f", f"head_sha={sha}", "-f", "event=push", "-f", "branch=main",
+                "-f", "status=success", "-f", "per_page=1", "--jq"]
+
+    for description, pages, ci_runs, expected in (
+        ("ignores closed unmerged PRs", [[unmerged]], [], "none"),
+        ("waits for a pending merge on a later page", issues, [{"total_count": 0}], "waiting"),
+        ("releases once all pending merges passed", issues, [{"total_count": 1}], "ready"),
+        ("fails if GitHub cannot list the pending releases", None, [], None),
+        ("fails if GitHub cannot list CI runs", issues, None, None),
+        ("fails if GitHub omits the CI run count", issues, [{}], None),
+    ):
+        result, output = github_step(tmp, RELEASE, "Check the merge commits of pending release PRs", [
+            (issues_args, pages),
+            (["api", f"{endpoint}/pulls/1"], [{"base": {"ref": "main"}, "merge_commit_sha": first}]),
+            (["api", f"{endpoint}/pulls/2"], [{"base": {"ref": "main"}, "merge_commit_sha": second}]),
+            (ci_args(first), [{"total_count": 1}]),
+            (ci_args(second), ci_runs),
+        ])
+        if expected is None:
+            check(result.returncode == 1 and not output, description)
+        else:
+            check(result.returncode == 0 and output == f"release={expected}\n", description)
+
+
+def release_steps(tmp: Path) -> None:
+    tmp.mkdir()
+    gh = tmp / "gh"
+    gh.write_text('''#!/usr/bin/env python3
+import json
+import os
+import subprocess
+import sys
+
+args = sys.argv[1:]
+query = args.pop() if args[-2:-1] == ["--jq"] else None
+for expected, pages in json.loads(os.environ["GH_RESPONSES"]):
+    if args == expected:
+        if pages is None:
+            sys.exit("GitHub API request failed")
+        for page in pages:
+            if query is None:
+                print(json.dumps(page))
+            else:
+                subprocess.run(["jq", "-r", query], input=json.dumps(page), text=True, check=True)
+        break
+else:
+    print(f"Unexpected gh call: {args!r}", file=sys.stderr)
+    sys.exit(47)
+''')
+    gh.chmod(0o755)
+    changelog(tmp)
+    release_gate(tmp)
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)
@@ -299,6 +418,7 @@ def main() -> int:
         drift(Copy(".github/workflows/check-drift.yml", WORKFLOW),
               tmp / "workflow")
         roster(tmp / "roster")
+        release_steps(tmp / "release")
 
     print()
     if failures:

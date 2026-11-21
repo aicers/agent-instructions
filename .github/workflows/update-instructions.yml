@@ -1,0 +1,15 @@
+name: Update shared instructions
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  update:
+    permissions:
+      contents: write
+      pull-requests: write
+    uses: aicers/agent-instructions/.github/workflows/apply.yml@main

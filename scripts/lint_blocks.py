@@ -19,6 +19,8 @@ MAX_WIDTH = 76
 PART = re.compile(r"[\w-]+")
 ROOT = Path(__file__).resolve().parent.parent
 CODE_SPAN = re.compile(r"`[^`]*`")
+# The shared pin filename, from RELATIVE in scripts/pin_file.py.
+PIN_FILENAME = ".agent-instructions.toml"
 
 # Repository names that are also ordinary English words. The rule is that
 # a block must not *name a repository*, and for these even a whole-word
@@ -115,8 +117,9 @@ def main() -> int:
             # settled above, against the filename's block part.
             is_marker = number in (1, len(lines))
             if not is_marker:
+                text = line.replace(PIN_FILENAME, "")
                 for repo in repos:
-                    if names_repository(line, repo, org):
+                    if names_repository(text, repo, org):
                         failures.append(
                             f"{where}:{number}: mentions the repository "
                             f"'{repo}'; blocks must be repository-neutral"
