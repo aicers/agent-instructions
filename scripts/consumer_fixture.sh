@@ -4,16 +4,9 @@
 #
 #   scripts/consumer_fixture.sh <release tag>
 #
-# This repository is not one of its own consumers. It has no AGENTS.md and
-# no `.agent-instructions.toml`, so the drift check has nothing here to
-# run against, and `check-drift/action.yml` would otherwise ship exercised
-# only by the thirteen repositories that call it -- which is to say, first
-# exercised after it was published. A check that has never been seen to
-# fail is not known to work.
-#
-# So `ci.yml` builds a consumer in its workspace and points the action at
-# it. This writes the two files that makes one: a target file carrying a
-# block, and a pin naming the release the block came from.
+# `ci.yml` builds these fixtures to exercise matching, drifted and behind
+# cases of the action. This writes a target file carrying a block and a
+# pin naming the release the block came from.
 #
 # The block is fetched from the release rather than taken from this
 # checkout. `main` is normally ahead of the tag, so filling the fixture

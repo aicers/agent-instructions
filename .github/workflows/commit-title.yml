@@ -1,0 +1,85 @@
+name: Commit title
+
+on:
+  push:
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  list:
+    name: List pushed commits
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      commits: ${{ steps.list.outputs.commits }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.after }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: List commits on main's first-parent path
+        id: list
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.event.after }}
+        run: |
+          set -euo pipefail
+          if [[ ! $BEFORE =~ ^[0-9a-f]{40}$ || ! $AFTER =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::The push event names no commit range."
+            exit 1
+          fi
+          if ! git cat-file -e "$BEFORE^{commit}"; then
+            echo "::error::The previous main head is unavailable, so the push cannot be checked."
+            exit 1
+          fi
+          shas=$(git rev-list --first-parent --reverse "$BEFORE..$AFTER")
+          count=$(grep -c . <<< "$shas" || true)
+          echo "$count commit(s) added on main's first-parent path."
+          if [[ $count -gt 256 ]]; then
+            echo "::error::This push exceeds GitHub's matrix limit of 256 commits."
+            exit 1
+          fi
+          commits=$(
+            for sha in $shas; do
+              parents=$(git show -s --format=%P "$sha") || exit 1
+              # The first line preserves the title as written. Git's %s
+              # would join all lines in the message's first paragraph.
+              title=$(git show -s --format=%B "$sha" | sed -n '1p') || exit 1
+              jq -cn --arg sha "$sha" --arg title "$title" --arg parents "$parents" \
+                '{sha: $sha, title: $title, parents: ($parents | split(" ") | length)}' || exit 1
+            done | jq -cs .
+          )
+          echo "commits=$commits" >> "$GITHUB_OUTPUT"
+
+  check:
+    name: Check commit ${{ matrix.commit.sha }}
+    needs: list
+    if: needs.list.outputs.commits != '[]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        commit: ${{ fromJSON(needs.list.outputs.commits) }}
+    steps:
+      - name: Require a single parent
+        env:
+          SHA: ${{ matrix.commit.sha }}
+          PARENTS: ${{ matrix.commit.parents }}
+        run: |
+          if [[ $PARENTS != 1 ]]; then
+            echo "::error::Commit $SHA has $PARENTS parents. main accepts squash merges only."
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.after }}
+          persist-credentials: false
+      - uses: aicers/agent-instructions/conventional-title@main
+        with:
+          title: ${{ matrix.commit.title }}
+          pr-suffix: "true"

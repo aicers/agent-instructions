@@ -29,6 +29,7 @@
     "github-dashboard": ["workflow", "commit-messages:conventional", "agentcoop", "node", "changelog:generated"],
     "docs-theme":      ["workflow", "commit-messages:conventional", "agentcoop", "changelog:generated"],
     "drive-agentcoop": ["workflow", "commit-messages:conventional", "agentcoop", "changelog:generated"],
+    "agent-instructions": ["workflow", "commit-messages:conventional", "agentcoop", "changelog:generated"],
     "taco":            ["workflow", "commit-messages", "agentcoop", "changelog"]
   }
 }

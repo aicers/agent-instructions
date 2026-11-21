@@ -58,8 +58,10 @@ scripts/
   check_release_surface.sh  refuse a release with nothing in it
   test_*.py       tests for the scripts above, run in CI
   fixtures/       a real consumer's AGENTS.md, for those tests to apply to
+AGENTS.md       this repository's instructions and pinned shared blocks
 STYLE.md        how to write a block
-CHANGELOG.md    what each release changed; also its release notes
+version.txt     the version written by the release pull request
+CHANGELOG.md    the generated changelog and source of the release notes
 ```
 
 The two workflows under `.github/workflows/` that consumers call are
@@ -193,26 +195,25 @@ cannot look it up. See [STYLE.md](STYLE.md).
    switching a repository to it, or back to the default, is changing its
    name in `repos.json`. A variant keeps its block's `##` heading and the
    block's own markers, `shared:<block>` — see [STYLE.md](STYLE.md).
-2. Add a `CHANGELOG.md` entry under the version you are about to cut.
-   The entry *is* the release notes, and `release.yml` refuses to
-   release a tag that has none.
-3. Open a pull request here. CI lints the Markdown, tests the scripts
-   consumers depend on, and checks the authoring rules.
-4. After it merges, tag the release. Consumers pin to release tags, so an
-   untagged change reaches nobody:
-
-   ```sh
-   git tag 0.2.0 && git push origin 0.2.0
-   ```
-
-   `release.yml` turns the tag into a GitHub Release with those notes. It
-   first refuses a tag that leaves `blocks/`, `repos.json` and
-   `conventional-title/pattern.txt` all byte-identical to the previous
-   release's, since that release would give every consumer a pull
-   request that moves a pin and changes no rule, no repository's list of
-   blocks and no title rule. A release that changes only one of the
-   three is accepted: each of them reaches a consumer through its pin,
-   and only through a release.
+2. Open a pull request with a [Conventional title](#the-rule) and leave
+   `CHANGELOG.md` and `version.txt` untouched. The title becomes the
+   changelog entry. CI lints the Markdown, tests the scripts consumers
+   depend on, and checks the authoring rules.
+3. After the merge, release-please opens or updates the release pull
+   request with the generated changelog section and the new version in
+   `version.txt`. Only that pull request changes either file.
+4. The coordinator reviews the proposed version and changelog, then
+   merges the release pull request with drive-agentcoop's
+   [`kit/release_merge.sh`](https://github.com/aicers/drive-agentcoop/blob/main/kit/release_merge.sh)
+   following [the PLAYBOOK's release rule (§3)](https://github.com/aicers/drive-agentcoop/blob/main/PLAYBOOK.md).
+   Pre-merge CI holds the release pull request open if `blocks/`,
+   `repos.json` and `conventional-title/pattern.txt` are byte-identical
+   to the last release. After the merge, release-please creates the
+   `X.Y.Z` tag and publishes the Latest GitHub Release, using the
+   generated changelog section as its notes. Consumers' scheduled apply
+   picks up that release. This repository's own apply pull request
+   updates its pin and generated instructions without changing any of
+   the three release surface paths.
 5. Check what each consumer is carrying. The roster comes from
    `repos.json`, so nothing here needs editing when a repository is
    added:
@@ -267,8 +268,11 @@ rules. A reversed rule costs one repository a review; a renamed input
 breaks every consumer at once, and the copy they carry is still correct
 while it does.
 
-Below `1.0.0` the grades shift down one: a breaking change bumps MINOR and
-everything else bumps PATCH. This repository stays on `0.x` until the
+Use `!` in the pull request title for a MAJOR-grade change, `feat` when
+adding a rule, and `docs` for wording-only changes. Below `1.0.0` a title
+with `!` raises the minor version and every other change raises the
+patch version, including `feat`. From `1.0.0` onward the version follows
+SemVer. This repository stays on `0.x` until the
 contract has been proven by consumers actually adopting it. What is proven
 today is the *blocks* contract; the delivery contract — the caller
 workflow, the pin file, the credential model — has been reshaped twice

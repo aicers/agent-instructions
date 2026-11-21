@@ -3,7 +3,7 @@
 
 The repository-name check is the part worth pinning down. It reads the
 roster rather than a fixed list, so a repository named after an ordinary
-English word decides what every block may say — and the two exemptions
+English word decides what every block may say — and the exemptions
 that makes necessary are exactly the kind of thing a later tightening
 would undo without noticing.
 
@@ -33,6 +33,7 @@ ROSTER = {
         "review": ["demo"],
         "review-database": ["demo"],
         "agentcoop": ["demo"],
+        "agent-instructions": ["demo"],
     },
 }
 
@@ -112,6 +113,26 @@ def main() -> int:
     )
     result = lint("demo", "## Demo\n\n- the bootroot-agent binary\n")
     check(result.returncode != 0, "fails on a name with a suffix")
+
+    print("the shared pin filename")
+    result = lint("demo", "## Demo\n\n- see `.agent-instructions.toml`\n")
+    check(result.returncode == 0, "allows the pin filename")
+    result = lint(
+        "demo", "## Demo\n\n- `.agent-instructions.toml` or `.agent-instructions.toml`\n"
+    )
+    check(result.returncode == 0, "allows multiple occurrences on one line")
+    for name in (
+        "aicers/agent-instructions",
+        "`agent-instructions`",
+        "agent-instructions",
+        "agent_instructions",
+    ):
+        result = lint("demo", f"## Demo\n\n- `.agent-instructions.toml` and {name}\n")
+        check(
+            result.returncode != 0
+            and "mentions the repository 'agent-instructions'" in result.stdout,
+            f"still rejects {name} beside the pin filename",
+        )
 
     print("the rest of the authoring rules")
     result = lint("demo", "## Demo\n\n- " + "x" * 80 + "\n")

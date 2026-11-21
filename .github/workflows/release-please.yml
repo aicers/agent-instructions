@@ -1,0 +1,167 @@
+name: Release
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  gate:
+    name: Check CI on the release commit
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+      || (github.event_name == 'workflow_run'
+        && github.event.workflow_run.conclusion == 'success'
+        && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      issues: read
+      pull-requests: read
+    outputs:
+      release: ${{ steps.gate.outputs.release }}
+    steps:
+      # release-please reads current main, which may have gained a merged
+      # release PR since the CI run that triggered this workflow.
+      - name: Check the merge commits of pending release PRs
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          numbers=$(gh api --paginate -X GET "repos/$GITHUB_REPOSITORY/issues" \
+            -f state=closed -f labels='autorelease: pending' -f per_page=100 \
+            --jq '.[] | select(.pull_request.merged_at != null) | .number')
+          release=none
+          for number in $numbers; do
+            pull=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$number")
+            if [[ $(jq -r '.base.ref' <<< "$pull") != main ]]; then
+              continue
+            fi
+            sha=$(jq -er '.merge_commit_sha | select(test("^[0-9a-f]{40}$"))' <<< "$pull")
+            passed=$(gh api -X GET \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs" \
+              -f head_sha="$sha" -f event=push -f branch=main \
+              -f status=success -f per_page=1 --jq .total_count)
+            if [[ ! $passed =~ ^[0-9]+$ ]]; then
+              echo "::error::Could not read the CI runs for $sha"
+              exit 1
+            fi
+            if [[ $passed -eq 0 ]]; then
+              echo "Skipping release and release PR updates until CI passes on $sha (PR $number)."
+              release=waiting
+              break
+            fi
+            echo "CI passed on $sha (PR $number)."
+            release=ready
+          done
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+
+  release-please:
+    name: Release Please
+    needs: gate
+    if: needs.gate.outputs.release != 'waiting'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    outputs:
+      pr: ${{ steps.pr.outputs.pr }}
+    steps:
+      - name: Tag and release
+        if: needs.gate.outputs.release == 'ready'
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          target-branch: main
+          skip-github-pull-request: true
+
+      - name: Check that the triggering commit is still the head of main
+        id: head
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          set -euo pipefail
+          head=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)
+          if [[ $head == "$SHA" ]]; then
+            echo "current=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "main moved from $SHA to $head. Its newer run will update the release PR."
+          fi
+
+      - name: Create or update the release PR
+        id: pr
+        if: steps.head.outputs.current == 'true'
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          target-branch: main
+          skip-github-release: true
+
+  title:
+    name: Validate PR title
+    needs: release-please
+    if: needs.release-please.outputs.pr != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+      statuses: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          persist-credentials: false
+
+      - name: Read the release PR title and head
+        id: read
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ needs.release-please.outputs.pr }}
+        run: |
+          set -euo pipefail
+          number=$(jq -er '.number | select(type == "number")' <<< "$PR")
+          pull=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$number")
+          sha=$(jq -er '.head.sha | select(test("^[0-9a-f]{40}$"))' <<< "$pull")
+          delimiter=$(openssl rand -hex 16)
+          {
+            echo "sha=$sha"
+            echo "title<<$delimiter"
+            jq -er '.title' <<< "$pull"
+            echo "$delimiter"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Check the title
+        id: check
+        continue-on-error: true
+        uses: aicers/agent-instructions/conventional-title@main
+        with:
+          title: ${{ steps.read.outputs.title }}
+
+      - name: Post the title status on the release PR head
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.read.outputs.sha }}
+          OUTCOME: ${{ steps.check.outcome }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          if [[ $OUTCOME == success ]]; then
+            state=success description="Conventional title"
+          else
+            state=failure description="Expected a Conventional title"
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/statuses/$SHA" -f state="$state" \
+            -f context="Validate PR title" -f description="$description" \
+            -f target_url="$RUN_URL" >/dev/null
+          echo "Validate PR title: $state on $SHA"
+          [[ $state == success ]]

@@ -26,16 +26,35 @@ jobs:
   # script cannot hide a lint result and the other way round. The
   # repository-root `.markdownlint-cli2.yaml` decides what is linted; the
   # action is given no `globs`, which would be added to the configured
-  # ones rather than replace them. No drift check: this repository is the
-  # source of the blocks, not a consumer of them.
+  # ones rather than replace them. Check this repository's pinned blocks
+  # even if lint fails.
   markdown:
     name: Markdown
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        id: checkout
 
       - name: Lint Markdown
         uses: DavidAnson/markdownlint-cli2-action@v25
+
+      - name: Check shared instruction drift
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
+        uses: ./check-drift
+
+  release-surface:
+    name: Check release surface
+    if: github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/release-please--')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+      - run: scripts/check_release_surface.sh
 
   check:
     runs-on: ubuntu-latest
@@ -121,13 +140,9 @@ jobs:
               print(f"note: variants no repository takes yet: {sorted(variants)}")
           PY
 
-  # `check-drift/action.yml` runs inside a consumer's job, and this
-  # repository is not one of its own consumers: it carries no AGENTS.md
-  # and no `.agent-instructions.toml`, so there is nothing here for the
-  # action to check. Published and never run is how a check ends up not
-  # working, so this job builds a consumer in its workspace instead --
-  # `scripts/consumer_fixture.sh`, filled from a real release -- and
-  # points the action at it three times: matching, drifted, and behind.
+  # This job builds a consumer in its workspace using
+  # `scripts/consumer_fixture.sh` and a real release to exercise the
+  # matching, drifted and behind cases of the check-drift action.
   #
   # This repository is checked out beside the fixture rather than under
   # it, because the fixture has to be what sits at the root of the
@@ -145,15 +160,12 @@ jobs:
       - name: Turn the workspace into a consumer
         run: |
           set -euo pipefail
-          # A consumer's workspace is a git checkout, and the pin warning
-          # asks it for `shared-instructions/*`. Pointed at this
-          # repository, which has no such branches, that listing succeeds
-          # and comes back empty -- which is the case the warning is
-          # written for. Left out, git would find no repository at all and
-          # the warning would take its "could not list" path instead,
-          # quietly testing nothing.
+          # Give the fixture a reachable remote with no update branches.
+          # This repository's own apply can create a shared-instructions
+          # branch, which would suppress the fixture's behind warning.
           git init -q .
-          git remote add origin https://github.com/aicers/agent-instructions
+          git init -q --bare "$RUNNER_TEMP/fixture-origin.git"
+          git remote add origin "$RUNNER_TEMP/fixture-origin.git"
 
       - name: Resolve the releases the fixtures are built from
         id: releases
@@ -641,7 +653,7 @@ jobs:
     name: CI Gate
     runs-on: ubuntu-latest
     permissions: {}
-    needs: [markdown, check, action, change-scope, conventional-title]
+    needs: [markdown, check, action, change-scope, conventional-title, release-surface]
     if: ${{ always() }}
     steps:
       - name: Assert every job passed or was skipped

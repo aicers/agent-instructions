@@ -1,0 +1,47 @@
+name: Changelog
+
+on:
+  pull_request_target:
+    types: [opened, edited, synchronize, reopened]
+
+permissions: {}
+
+jobs:
+  changelog:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    steps:
+      - name: Allow CHANGELOG.md only in the release PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          endpoint="repos/$GITHUB_REPOSITORY/pulls/$NUMBER"
+          pull=$(gh api "$endpoint")
+          expected=$(jq -er '.changed_files | select(type == "number")' <<< "$pull")
+          files=$(gh api --paginate "$endpoint/files?per_page=100" \
+            --jq '.[] | (.filename == "CHANGELOG.md" or .previous_filename == "CHANGELOG.md")')
+          count=$(grep -c . <<< "$files" || true)
+          # GitHub caps this endpoint at 3000 files. Fail on incomplete data.
+          if [[ $count -ne $expected ]]; then
+            echo "::error::Read $count of $expected changed files for PR $NUMBER."
+            exit 1
+          fi
+          if ! grep -qx true <<< "$files"; then
+            echo "This PR leaves CHANGELOG.md unchanged."
+            exit 0
+          fi
+          if jq -e --arg repo "$GITHUB_REPOSITORY" '
+            .user.login == "github-actions[bot]"
+            and .user.type == "Bot"
+            and .head.repo.full_name == $repo
+            and (.head.ref | startswith("release-please--"))
+            and .base.ref == .base.repo.default_branch
+          ' <<< "$pull" >/dev/null; then
+            echo "The release PR may change CHANGELOG.md."
+          else
+            echo "::error::Only the release PR may change CHANGELOG.md. Use your PR title as the entry."
+            exit 1
+          fi
