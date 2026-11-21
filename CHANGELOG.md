@@ -4,6 +4,13 @@ This file documents recent notable changes to this project. The format of this
 file is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.3](https://github.com/aicers/agent-instructions/compare/0.6.2...0.6.3) (2026-11-21)
+
+
+### Other
+
+* automate releases with release-please ([#112](https://github.com/aicers/agent-instructions/issues/112)) ([6c516fc](https://github.com/aicers/agent-instructions/commit/6c516fcde79e28bcc9c52e0640d6d1efb300c52f))
+
 ## [0.6.2] - 2026-11-21
 
 ### Changed
