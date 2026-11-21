@@ -16,6 +16,7 @@ so.
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -600,16 +601,28 @@ def main() -> int:
                 f"{description} writes nothing",
             )
 
-        # What this tree's repos.json does to a repository that is on
-        # 0.5.0 today: the Commit messages section leaves the workflow
-        # region for a region of its own right after it, and nothing else
-        # in the file moves or changes.
+        # What this tree's blocks do to a repository that is on 0.5.0 and
+        # takes the default blocks: the Commit messages section leaves the
+        # workflow region for a region of its own right after it, and
+        # nothing else in the file moves or changes. The consumer's entry
+        # is pinned to the default blocks in a copy of this tree, since
+        # this tree's own repos.json moves repositories to the variants
+        # one batch at a time.
         print("this tree applied to a current consumer")
+        default_tree = tmp / "default-tree"
+        shutil.copytree(ROOT / "blocks", default_tree / "blocks")
+        roster = json.loads((ROOT / "repos.json").read_text(encoding="utf-8"))
+        roster["repos"]["bootroot"] = [
+            "workflow", "commit-messages", "agentcoop", "rust", "changelog"
+        ]
+        (default_tree / "repos.json").write_text(
+            json.dumps(roster, indent=2) + "\n", encoding="utf-8"
+        )
         original = CONSUMER.read_text(encoding="utf-8")
         current = consumer(
             tmp / "bootroot", agents=original, pin=CONSUMER_PIN
         )
-        result = run(ROOT, current, "0.6.0")
+        result = run(default_tree, current, "0.6.0")
         applied = (current / "AGENTS.md").read_text(encoding="utf-8")
         check(result.returncode == 0, "exits 0")
         heading = "## Commit messages\n"
