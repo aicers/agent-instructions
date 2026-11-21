@@ -143,6 +143,7 @@ jobs:
   # This job builds a consumer in its workspace using
   # `scripts/consumer_fixture.sh` and a real release to exercise the
   # matching, drifted and behind cases of the check-drift action.
+  # The repository's own drift check only exercises its current pin.
   #
   # This repository is checked out beside the fixture rather than under
   # it, because the fixture has to be what sits at the root of the
