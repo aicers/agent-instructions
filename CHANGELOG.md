@@ -8,6 +8,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- `review-database`, `giganto`, `multifold`, and `reproduce` take the
+  `commit-messages:conventional` and `changelog:generated` variants: their
+  `AGENTS.md` asks for Conventional Commits pull request titles and leaves
+  `CHANGELOG.md` to the release tool, which writes it from those titles.
 - `commit-messages:conventional` no longer says that the pull request
   body becomes the squash commit's body. The pull request body still
   carries `Closes #N` or `Part of #N`, and `Closes #N` closes the issue
