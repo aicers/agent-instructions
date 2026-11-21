@@ -20,8 +20,21 @@ if [[ -z $last_tag ]]; then
 fi
 
 surface=(blocks/ repos.json conventional-title/pattern.txt)
-changed=$(git diff --name-only --no-renames "refs/tags/$last_tag" HEAD -- "${surface[@]}" \
-  | sed 's#^blocks/.*#blocks/#' | sort -u | paste -sd' ' -)
+changed=$(
+  git diff --raw --no-abbrev --no-renames -z "refs/tags/$last_tag" HEAD -- "${surface[@]}" \
+    | while IFS= read -r -d '' entry && IFS= read -r -d '' path; do
+        read -r _ _ before after status <<< "$entry"
+        # Executable bits do not change what consumers read. File type
+        # changes, which can replace a file with a symlink, still count.
+        if [[ $before == "$after" && $status != T ]]; then
+          continue
+        fi
+        if [[ $path == blocks/* ]]; then
+          path=blocks/
+        fi
+        printf '%s\n' "$path"
+      done | sort -u | paste -sd' ' -
+)
 
 echo "Comparing blocks/, repos.json and conventional-title/pattern.txt: $last_tag -> HEAD"
 if [[ -z $changed ]]; then

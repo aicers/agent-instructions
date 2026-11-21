@@ -70,6 +70,12 @@ def main() -> None:
         )})
         check(root, "only paths outside the surface changed", 1, comparison)
 
+        git(root, "update-index", "--chmod=+x", "blocks/demo.md")
+        git(root, "commit", "-qm", "change only the executable bit")
+        check(root, "only file mode changed", 1, comparison)
+        git(root, "update-index", "--chmod=-x", "blocks/demo.md")
+        git(root, "commit", "-qm", "restore the executable bit")
+
         commit(root, {"blocks/demo.md": "other rules\n"})
         for tag in ("1.9.0", "v2", "2.0.0-rc.1"):
             git(root, "tag", tag)
@@ -81,15 +87,33 @@ def main() -> None:
 
         for path, changed in (
             ("blocks/demo.md", "blocks/"),
+            ("blocks/règle.md", "blocks/"),
             ("repos.json", "repos.json"),
             ("conventional-title/pattern.txt", "conventional-title/pattern.txt"),
         ):
             git(root, "reset", "--hard", "1.10.0")
             commit(root, {path: "updated\n"})
             check(
-                root, f"only {changed} changed", 0,
+                root, f"only {path} changed", 0,
                 f"Changed release surface: {changed}\n",
             )
+
+        git(root, "reset", "--hard", "1.10.0")
+        git(root, "rm", "-q", "conventional-title/pattern.txt")
+        git(root, "commit", "-qm", "remove the title rule")
+        check(root, "surface file removed", 0,
+              "Changed release surface: conventional-title/pattern.txt\n")
+
+        git(root, "reset", "--hard", "1.10.0")
+        block = root / "blocks/demo.md"
+        block.unlink()
+        # A symlink stores its target as its blob. Reuse the regular
+        # file's contents so the object ID stays the same across the change.
+        block.symlink_to(surface["blocks/demo.md"])
+        git(root, "add", "blocks/demo.md")
+        git(root, "commit", "-qm", "replace a block with a symlink")
+        check(root, "file type changed with the same blob", 0,
+              "Changed release surface: blocks/\n")
 
     print("all check_release_surface.sh tests passed")
 
