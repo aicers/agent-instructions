@@ -8,6 +8,22 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- `aimer`, `bootroot`, `crusher`, `deploy-core`, `estore`, `estore-protocol`,
+  `piglet`, `review`, `review-protocol`, `review-web`, `roxyd`, `agentcoop`,
+  and `aice-web-next` take the `commit-messages:conventional` and
+  `changelog:generated` variants: their `AGENTS.md` asks for Conventional
+  Commits pull request titles and leaves `CHANGELOG.md` to the release tool,
+  which writes it from those titles. `bootler` takes
+  `commit-messages:conventional` and `changelog:manual-release`: its
+  `AGENTS.md` asks for Conventional Commits pull request titles, keeps normal
+  pull requests out of `CHANGELOG.md`, and has a pull request with a
+  user-visible change describe it in a `## Changelog` section of its body,
+  which the coordinator moves into `CHANGELOG.md` at release.
+- `attrievent`, `qflow`, `cluml-home`, `github-dashboard`, `docs-theme`, and
+  `drive-agentcoop` can take the shared blocks, with the
+  `commit-messages:conventional` and `changelog:generated` variants: once they
+  do, their `AGENTS.md` asks for Conventional Commits pull request titles and
+  leaves `CHANGELOG.md` to the release tool.
 - `review-database`, `giganto`, `multifold`, and `reproduce` take the
   `commit-messages:conventional` and `changelog:generated` variants: their
   `AGENTS.md` asks for Conventional Commits pull request titles and leaves
