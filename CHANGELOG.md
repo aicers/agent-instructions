@@ -4,6 +4,14 @@ This file documents recent notable changes to this project. The format of this
 file is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.4](https://github.com/aicers/agent-instructions/compare/0.6.3...0.6.4) (2026-11-22)
+
+
+### Other
+
+* add senta and senta-protocol to repos.json ([#117](https://github.com/aicers/agent-instructions/issues/117)) ([405d3c5](https://github.com/aicers/agent-instructions/commit/405d3c51141a416c57ce5d9e8f427bf6e27e6e3a)), closes [#116](https://github.com/aicers/agent-instructions/issues/116)
+* update shared instruction blocks to 0.6.3 ([#114](https://github.com/aicers/agent-instructions/issues/114)) ([40bd17f](https://github.com/aicers/agent-instructions/commit/40bd17f5705717aed4912b79928188904904ca30))
+
 ## [0.6.3](https://github.com/aicers/agent-instructions/compare/0.6.2...0.6.3) (2026-11-21)
 
 
