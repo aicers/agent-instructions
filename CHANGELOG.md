@@ -4,6 +4,15 @@ This file documents recent notable changes to this project. The format of this
 file is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.5](https://github.com/aicers/agent-instructions/compare/0.6.4...0.6.5) (2026-11-26)
+
+
+### Other
+
+* add rulec to repos.json ([#123](https://github.com/aicers/agent-instructions/issues/123)) ([dbf6994](https://github.com/aicers/agent-instructions/commit/dbf69946b744af80b61009357030697a83e6a313)), closes [#122](https://github.com/aicers/agent-instructions/issues/122)
+* count the triggering CI run as passed in the release gate ([#121](https://github.com/aicers/agent-instructions/issues/121)) ([37c35de](https://github.com/aicers/agent-instructions/commit/37c35de01f3a7b63ccf562964625f3a93337383f)), closes [#120](https://github.com/aicers/agent-instructions/issues/120)
+* update shared instruction blocks to 0.6.4 ([#118](https://github.com/aicers/agent-instructions/issues/118)) ([b1a8778](https://github.com/aicers/agent-instructions/commit/b1a87784646ad2518e12050fea8326c46f83e34b))
+
 ## [0.6.4](https://github.com/aicers/agent-instructions/compare/0.6.3...0.6.4) (2026-11-22)
 
 
