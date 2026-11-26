@@ -22,6 +22,7 @@
     "review-protocol": ["workflow", "commit-messages:conventional", "agentcoop", "rust", "changelog:generated"],
     "review-web":      ["workflow", "commit-messages:conventional", "agentcoop", "rust", "changelog:generated"],
     "roxyd":           ["workflow", "commit-messages:conventional", "agentcoop", "rust", "changelog:generated"],
+    "rulec":           ["workflow", "commit-messages:conventional", "agentcoop", "rust", "changelog:generated"],
     "senta":           ["workflow", "commit-messages:conventional", "agentcoop", "rust", "changelog:generated"],
     "senta-protocol":  ["workflow", "commit-messages:conventional", "agentcoop", "rust", "changelog:generated"],
     "agentcoop":       ["workflow", "commit-messages:conventional", "agentcoop", "node", "changelog:generated"],
