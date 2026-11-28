@@ -4,6 +4,13 @@ This file documents recent notable changes to this project. The format of this
 file is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.6](https://github.com/aicers/agent-instructions/compare/0.6.5...0.6.6) (2026-11-28)
+
+
+### Added
+
+* **blocks:** keep experiment result files in discussions ([#125](https://github.com/aicers/agent-instructions/issues/125)) ([464948b](https://github.com/aicers/agent-instructions/commit/464948b4596a70f6c78561a75266318d0f5ac5c5)), closes [#124](https://github.com/aicers/agent-instructions/issues/124)
+
 ## [0.6.5](https://github.com/aicers/agent-instructions/compare/0.6.4...0.6.5) (2026-11-26)
 
 
